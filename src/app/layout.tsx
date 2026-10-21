@@ -14,26 +14,27 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "IQOL — Intelligent Property Conversations",
-    template: "%s | IQOL",
+    default: "SignalDesk — Real Estate Lead Intelligence",
+    template: "%s | SignalDesk",
   },
   description:
-    "IQOL is a multilingual real-estate lead-conversion demonstration. " +
-    "Explore premium Bengaluru properties and engage in AI-powered conversations " +
-    "in six languages. All data is synthetic and for demonstration only.",
+    "SignalDesk helps real-estate salespeople prioritise inbound leads, " +
+    "understand customer intent, and act with AI-powered analysis, " +
+    "contextual coaching, and objection rehearsal. " +
+    "Built for the Bengaluru property market. All data is synthetic.",
   keywords: [
-    "IQOL",
+    "SignalDesk",
     "real estate",
+    "lead intelligence",
     "Bengaluru",
-    "property",
-    "AI conversation",
-    "multilingual",
-    "demo",
+    "AI",
+    "sales",
+    "lead scoring",
   ],
   robots: "noindex, nofollow",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html
       lang="en"
