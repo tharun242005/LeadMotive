@@ -15,10 +15,13 @@
 // - Stored leads belong to this browser only — not shared across devices.
 // ============================================================================
 
-import type { Lead } from "@/types/lead";
+import type { Lead, LeadMomentumPlan, StepStatus, RehearsalSession } from "@/types/lead";
 import { SEED_LEADS } from "@/lib/leads/fixtures";
+import { SEEDED_MOMENTUM_PLANS } from "@/lib/leads/momentum-fixtures";
 
 const STORAGE_KEY = "signaldesk_leads_v1";
+const PLANS_STORAGE_KEY = "signaldesk_momentum_plans_v1";
+const REHEARSALS_STORAGE_KEY = "signaldesk_rehearsals_v1";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -47,8 +50,18 @@ function isValidLead(obj: unknown): obj is Lead {
   );
 }
 
+function isValidPlan(obj: unknown): obj is LeadMomentumPlan {
+  if (!obj || typeof obj !== "object") return false;
+  const o = obj as Record<string, unknown>;
+  return (
+    typeof o.planId === "string" &&
+    typeof o.leadId === "string" &&
+    Array.isArray(o.steps)
+  );
+}
+
 // ---------------------------------------------------------------------------
-// Public API
+// Public API — Leads
 // ---------------------------------------------------------------------------
 
 /**
@@ -120,11 +133,13 @@ export function saveLead(lead: Lead): Lead[] {
 }
 
 /**
- * Delete a lead by ID.
+ * Delete a lead by ID and clean up associated plan.
  */
 export function deleteLead(id: string): Lead[] {
   const leads = loadLeads().filter((l) => l.id !== id);
   saveLeads(leads);
+  deletePlanForLead(id);
+  deleteRehearsalSessionForLead(id);
   return leads;
 }
 
@@ -133,6 +148,12 @@ export function deleteLead(id: string): Lead[] {
  */
 export function resetToSeedData(): Lead[] {
   saveLeads(SEED_LEADS);
+  savePlans(SEEDED_MOMENTUM_PLANS);
+  if (isLocalStorageAvailable()) {
+    try {
+      localStorage.removeItem(REHEARSALS_STORAGE_KEY);
+    } catch {}
+  }
   return [...SEED_LEADS];
 }
 
@@ -141,5 +162,183 @@ export function resetToSeedData(): Lead[] {
  */
 export function hasExistingData(): boolean {
   if (!isLocalStorageAvailable()) return false;
+  // Cleanup any legacy key entry if present
+  try {
+    localStorage.removeItem("signaldesk_gemini_api_key_v1");
+  } catch {}
   return localStorage.getItem(STORAGE_KEY) !== null;
 }
+
+// ---------------------------------------------------------------------------
+// Public API — Lead Momentum Plans
+// ---------------------------------------------------------------------------
+
+/**
+ * Load all momentum plans from localStorage.
+ * Defaults to seeded canonical plans on first access.
+ */
+export function loadPlans(): Record<string, LeadMomentumPlan> {
+  if (!isLocalStorageAvailable()) {
+    return { ...SEEDED_MOMENTUM_PLANS };
+  }
+
+  try {
+    const raw = localStorage.getItem(PLANS_STORAGE_KEY);
+    if (!raw) {
+      savePlans(SEEDED_MOMENTUM_PLANS);
+      return { ...SEEDED_MOMENTUM_PLANS };
+    }
+
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    if (!parsed || typeof parsed !== "object") {
+      savePlans(SEEDED_MOMENTUM_PLANS);
+      return { ...SEEDED_MOMENTUM_PLANS };
+    }
+
+    const validPlans: Record<string, LeadMomentumPlan> = {};
+    for (const [leadId, plan] of Object.entries(parsed)) {
+      if (isValidPlan(plan)) {
+        validPlans[leadId] = plan;
+      }
+    }
+
+    return validPlans;
+  } catch (err) {
+    console.error("[SignalDesk] Failed to parse stored momentum plans:", err);
+    savePlans(SEEDED_MOMENTUM_PLANS);
+    return { ...SEEDED_MOMENTUM_PLANS };
+  }
+}
+
+/**
+ * Save all plans map.
+ */
+export function savePlans(plans: Record<string, LeadMomentumPlan>): void {
+  if (!isLocalStorageAvailable()) return;
+  try {
+    localStorage.setItem(PLANS_STORAGE_KEY, JSON.stringify(plans));
+  } catch (err) {
+    console.error("[SignalDesk] Failed to save momentum plans:", err);
+  }
+}
+
+/**
+ * Load a specific plan for a lead.
+ */
+export function loadPlanForLead(leadId: string): LeadMomentumPlan | null {
+  const plans = loadPlans();
+  return plans[leadId] || null;
+}
+
+/**
+ * Save or update a single lead's momentum plan.
+ */
+export function savePlan(plan: LeadMomentumPlan): void {
+  const plans = loadPlans();
+  plans[plan.leadId] = plan;
+  savePlans(plans);
+}
+
+/**
+ * Delete a lead's momentum plan.
+ */
+export function deletePlanForLead(leadId: string): void {
+  const plans = loadPlans();
+  if (plans[leadId]) {
+    delete plans[leadId];
+    savePlans(plans);
+  }
+}
+
+/**
+ * Update the status of a specific step in a plan.
+ */
+export function updateStepStatus(
+  leadId: string,
+  stepId: string,
+  status: StepStatus,
+  blockedReason?: string
+): LeadMomentumPlan | null {
+  const plan = loadPlanForLead(leadId);
+  if (!plan) return null;
+
+  const now = new Date().toISOString();
+  const updatedSteps = plan.steps.map((step) => {
+    if (step.id !== stepId) return step;
+    return {
+      ...step,
+      status,
+      blockedReason: status === "blocked" ? blockedReason || "Blocked by external dependency" : undefined,
+      completedAt: status === "completed" ? now : step.completedAt,
+      statusUpdatedAt: now,
+    };
+  });
+
+  const updatedPlan: LeadMomentumPlan = {
+    ...plan,
+    steps: updatedSteps,
+    updatedAt: now,
+  };
+
+  savePlan(updatedPlan);
+  return updatedPlan;
+}
+
+// ---------------------------------------------------------------------------
+// Public API — Objection Rehearsal Sessions
+// ---------------------------------------------------------------------------
+
+/**
+ * Load all objection rehearsal sessions from localStorage.
+ */
+export function loadRehearsalSessions(): Record<string, RehearsalSession> {
+  if (!isLocalStorageAvailable()) return {};
+  try {
+    const raw = localStorage.getItem(REHEARSALS_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (err) {
+    console.error("[SignalDesk] Failed to parse rehearsal sessions:", err);
+    return {};
+  }
+}
+
+/**
+ * Load rehearsal session for a specific lead.
+ */
+export function loadRehearsalSessionForLead(leadId: string): RehearsalSession | null {
+  const sessions = loadRehearsalSessions();
+  return sessions[leadId] || null;
+}
+
+/**
+ * Save a rehearsal session record for a lead.
+ */
+export function saveRehearsalSession(session: RehearsalSession): void {
+  if (!isLocalStorageAvailable()) return;
+  try {
+    const sessions = loadRehearsalSessions();
+    sessions[session.leadId] = session;
+    localStorage.setItem(REHEARSALS_STORAGE_KEY, JSON.stringify(sessions));
+  } catch (err) {
+    console.error("[SignalDesk] Failed to save rehearsal session:", err);
+  }
+}
+
+/**
+ * Delete a rehearsal session for a specific lead.
+ */
+export function deleteRehearsalSessionForLead(leadId: string): void {
+  if (!isLocalStorageAvailable()) return;
+  try {
+    const sessions = loadRehearsalSessions();
+    if (sessions[leadId]) {
+      delete sessions[leadId];
+      localStorage.setItem(REHEARSALS_STORAGE_KEY, JSON.stringify(sessions));
+    }
+  } catch (err) {
+    console.error("[SignalDesk] Failed to delete rehearsal session:", err);
+  }
+}
+

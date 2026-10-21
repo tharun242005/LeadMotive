@@ -6,9 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "node --test tests/scoring.test.mjs tests/plan.test.mjs tests/analysis.test.mjs tests/chat.test.mjs tests/rehearsal.test.mjs tests/security_and_resilience.test.mjs"
   },
   "dependencies": {
+    "@google/genai": "^2.30.0",
     "framer-motion": "^14.4.0",
     "lucide-react": "^1.60.0",
     "next": "16.4.2",

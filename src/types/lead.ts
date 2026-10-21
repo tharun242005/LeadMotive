@@ -71,6 +71,8 @@ export interface ExtractedRequirement {
   label: string;
   /** Whether this is explicitly stated or inferred. */
   confidence: "explicit" | "inferred";
+  /** Exact customer quote providing evidence if available. */
+  evidenceQuote?: string;
 }
 
 /** A concern or objection extracted from the customer message. */
@@ -79,6 +81,10 @@ export interface ExtractedObjection {
   label: string;
   /** Severity from the salesperson's perspective. */
   severity: "high" | "medium" | "low";
+  /** Exact customer quote providing evidence if available. */
+  evidenceQuote?: string;
+  /** Concrete recommended handling for the salesperson. */
+  recommendedHandling?: string;
 }
 
 /** Suggested next action for the salesperson. */
@@ -89,6 +95,23 @@ export interface SuggestedAction {
   description: string;
   /** Suggested timeframe, e.g. "Within 2 hours", "Tomorrow morning". */
   timeframe: string;
+  /** Strategic rationale explaining why this action is recommended now. */
+  rationale?: string;
+  /** Suggested urgency. */
+  urgency?: "immediate" | "high" | "normal" | "low";
+}
+
+/** Customer intent classification with explanation. */
+export interface CustomerIntentData {
+  category: CustomerIntent;
+  explanation: string;
+}
+
+/** Grounded evidence item linking lead fields to original text. */
+export interface LeadEvidenceItem {
+  field: string;
+  quote: string;
+  verified: boolean;
 }
 
 /** Touchpoint in the deal velocity timeline. */
@@ -109,22 +132,45 @@ export interface LeadAnalysis {
   summary: string;
   /** Classified customer intent. */
   intent: CustomerIntent;
+  /** Detailed customer intent object. */
+  customerIntent?: CustomerIntentData;
   /** Confidence in the intent classification (0–1). */
   intentConfidence: number;
   /** Key requirements extracted from the customer message. */
   requirements: ExtractedRequirement[];
-  /** Objections or concerns. */
+  /** Alias for keyRequirements. */
+  keyRequirements?: ExtractedRequirement[];
+  /** Objections or concerns with evidence and recommended handling. */
   objections: ExtractedObjection[];
   /** Recommended next action. */
   recommendedAction: SuggestedAction;
+  /** Alias for recommendedNextAction. */
+  recommendedNextAction?: SuggestedAction;
   /** Suggested response to the customer. */
   suggestedResponse: string;
   /** Deal velocity timeline — touchpoints over the next few weeks. */
   timeline: TimelineTouchpoint[];
+  /** Unresolved facts needed for a better recommendation. */
+  missingInformation?: string[];
+  /** Grounded evidence quotes mapped and verified against input text. */
+  evidence?: LeadEvidenceItem[];
+  /** Important limitations or ambiguous details. */
+  uncertainties?: string[];
   /** Timestamp when analysis was generated. */
   analyzedAt: string;
   /** Whether this analysis is seeded fixture data. */
   isSeeded: boolean;
+  /** Model name if live. */
+  model?: string;
+  /** Complete AI execution metadata. */
+  meta?: {
+    provider: "google-gemini" | "offline-heuristic";
+    model: string | null;
+    mode: "live" | "fallback";
+    fallbackUsed: boolean;
+    latencyMs: number;
+    message?: string;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -140,6 +186,10 @@ export interface CopilotMessage {
   role: CopilotRole;
   content: string;
   timestamp: string;
+  supportingEvidence?: string[];
+  uncertainties?: string[];
+  suggestedNextQuestion?: string;
+  isError?: boolean;
 }
 
 /** Role in an objection rehearsal session. */
@@ -153,12 +203,50 @@ export interface RehearsalMessage {
   timestamp: string;
 }
 
+/** Dimension score in the coaching rubric (rated 1 to 5). */
+export interface RubricDimension {
+  dimension: "concern_addressing" | "empathy_and_clarity" | "evidence_relevance" | "next_step_drive";
+  label: string;
+  score: number; // 1 to 5
+  explanation: string;
+}
+
 /** AI coaching feedback on a rehearsal response. */
 export interface RehearsalFeedback {
-  score: number;         // 1–10
+  /** Overall score (1–10). */
+  score: number;
+  /** Summary evaluation of the rehearsal. */
+  summary?: string;
+  /** Key strengths demonstrated by the salesperson. */
   strengths: string[];
+  /** Assessment of whether the customer's core concern was addressed. */
+  concernAddressed: {
+    addressed: boolean;
+    explanation: string;
+  };
+  /** Multi-dimensional 1–5 rubric assessment. */
+  dimensions: RubricDimension[];
+  /** Areas for improvement. */
   improvements: string[];
+  /** One key specific improvement highlighted. */
+  keyImprovement: string;
+  /** A suggested stronger reply tailored to the actual transcript. */
   suggestedAlternative: string;
+  /** Explicit disclaimer that coaching score does not guarantee commercial outcome. */
+  disclaimer?: string;
+}
+
+/** Full Rehearsal Session state for a lead. */
+export interface RehearsalSession {
+  sessionId: string;
+  leadId: string;
+  targetObjection: string;
+  objective: string;
+  messages: RehearsalMessage[];
+  feedback: RehearsalFeedback | null;
+  status: "in_progress" | "debrief_ready" | "completed";
+  startedAt: string;
+  updatedAt: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -205,4 +293,109 @@ export interface Lead {
   copilotMessages: CopilotMessage[];
   /** Objection rehearsal messages for this lead. */
   rehearsalMessages: RehearsalMessage[];
+  /** Objection rehearsal session record, if any. */
+  rehearsalSession?: RehearsalSession | null;
 }
+
+// ---------------------------------------------------------------------------
+// Lead Momentum Plan Types
+// ---------------------------------------------------------------------------
+
+export type PlanningObjective =
+  | "first_follow_up"
+  | "address_objection"
+  | "clarify_requirements"
+  | "progress_buyer"
+  | "re_engage_dormant"
+  | "complete_strategy"
+  | "custom";
+
+export type CommunicationFormat =
+  | "whatsapp"
+  | "email"
+  | "call_script"
+  | "general_action";
+
+export type StepStatus =
+  | "pending"
+  | "in_progress"
+  | "completed"
+  | "skipped"
+  | "blocked";
+
+export type StepCategory =
+  | "outreach"
+  | "discovery"
+  | "objection_handling"
+  | "site_visit_prep"
+  | "proposal"
+  | "follow_up"
+  | "internal_prep";
+
+export interface DecisionBranch {
+  condition: string;
+  triggerEvidence: string;
+  recommendedAction: string;
+  planImpact: "proceed" | "pause" | "adapt" | "stop";
+}
+
+export interface CommunicationDraft {
+  channel: "whatsapp" | "email" | "call_script";
+  suggestedTone: string;
+  draft: string;
+  concernAddressed: string;
+  verificationChecklist: string[];
+  followUpQuestion?: string;
+  alternativeApproach?: string;
+}
+
+export interface MomentumPlanStep {
+  id: string;
+  sequence: number;
+  title: string;
+  category: StepCategory;
+  purpose: string;
+  instructions: string;
+  rationale: string;
+  supportingEvidence: string[];
+  timing: string;
+  prerequisites: string[];
+  expectedOutcome: string;
+  completionCriteria: string;
+  risksOrUnknowns: string[];
+  contingency: string;
+  status: StepStatus;
+  blockedReason?: string;
+  completedAt?: string;
+  statusUpdatedAt?: string;
+  communicationDraft?: CommunicationDraft;
+  decisionBranches?: DecisionBranch[];
+}
+
+export interface LeadMomentumPlan {
+  planId: string;
+  leadId: LeadId;
+  planVersion: number;
+  planTitle: string;
+  objective: PlanningObjective;
+  objectiveLabel: string;
+  communicationFormat: CommunicationFormat;
+  additionalInstructions?: string;
+  leadSituationSummary: string;
+  strategyRationale: string;
+  assumptions: string[];
+  unknowns: string[];
+  successDefinition: string;
+  createdAt: string;
+  updatedAt: string;
+  steps: MomentumPlanStep[];
+  meta?: {
+    provider: "google-gemini" | "offline-heuristic" | "seeded-fixture";
+    model: string | null;
+    mode: "live" | "fallback" | "fixture";
+    fallbackUsed: boolean;
+    latencyMs: number;
+    message?: string;
+  };
+}
+

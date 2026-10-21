@@ -1,274 +1,354 @@
 // ============================================================================
-// SignalDesk — Deterministic Lead Priority Scoring
+// SignalDesk — Authoritative Deterministic Lead Priority Scoring (4-Factor Model)
 // ============================================================================
 //
-// The score is computed entirely on the client from the lead's own fields.
-// It does NOT depend on AI analysis — a lead gets a score the moment it is
-// created, before any AI call. This keeps scoring transparent, debuggable
-// and explainable in the interview.
+// The score is computed entirely deterministically from the lead's own fields.
+// It does NOT depend on AI analysis — a lead gets an auditable score the moment
+// it is created, before any AI call.
 //
-// Total: 0–100 points, divided into five factors.
+// Single Authoritative 100-Point Formula (Prompt 3.1):
+// 1. Buying timeline            Max 30 pts   (30, 22, 14, 7, 0)
+// 2. Explicit buying intent     Max 30 pts   (30, 20, 12, 6, 0)
+// 3. Requirement completeness   Max 25 pts   (5 pts x 5 criteria = 25 pts)
+// 4. Engagement depth           Max 15 pts   (15, 10, 4, 0 based on conversation depth)
 //
-// Factor                   Max pts   Logic
-// ─────────────────────────────────────────────────────────────
-// Budget specificity        20       Has a concrete number vs. vague
-// Buying timeline           25       Immediate scores highest
-// Message quality           20       Length & detail of customer message
-// Location clarity          15       Recognised Bengaluru locality
-// Requirement specificity   20       Mentions BHK, type, amenities, etc.
+// Priority Bands:
+//   Hot   75–100   Immediate high-intent action window
+//   Warm  45–74    Qualified buyer in active evaluation
+//   Cold  0–44     Early research or uncommitted inquiry
 //
-// Band thresholds:
-//   Hot  ≥ 70
-//   Warm ≥ 40
-//   Cold < 40
+// NOTE: This score is a rule-based prioritization aid. It is NOT a statistically
+// calibrated probability of conversion.
 // ============================================================================
 
-import type { Lead, PriorityScore, PriorityFactor, PriorityBand, BuyingTimeline } from "@/types/lead";
+import type { PriorityScore, PriorityFactor, PriorityBand, BuyingTimeline } from "@/types/lead";
 
 // ---------------------------------------------------------------------------
-// Known Bengaluru localities (for location scoring)
+// Factor 1: Buying Timeline (Max 30 pts)
 // ---------------------------------------------------------------------------
-const BENGALURU_LOCALITIES = new Set([
-  "whitefield", "sarjapur road", "sarjapur", "hebbal", "yelahanka",
-  "hennur", "electronic city", "hsr layout", "koramangala", "indiranagar",
-  "jayanagar", "jp nagar", "bannerghatta road", "bannerghatta",
-  "marathahalli", "bellandur", "devanahalli", "thanisandra", "bagalur",
-  "kanakapura road", "mysore road", "tumkur road", "rajajinagar",
-  "malleshwaram", "basavanagudi", "btm layout", "bommanahalli",
-  "kr puram", "mahadevapura", "varthur", "kadugodi", "hoskote",
-  "doddaballapur", "north bengaluru", "south bengaluru",
-  "east bengaluru", "west bengaluru", "central bengaluru",
-]);
+// A. Buying timeline — maximum 30 points:
+// - Within 30 days: 30.
+// - Within 90 days: 22.
+// - Within 180 days: 14.
+// - Beyond 180 days: 7.
+// - Unknown: 0.
+export function scoreTimeline(timeline: BuyingTimeline): PriorityFactor {
+  const maxPoints = 30;
+  let points = 0;
+  let reason = "";
 
-// ---------------------------------------------------------------------------
-// Scoring functions
-// ---------------------------------------------------------------------------
-
-function scoreBudget(budget: number): PriorityFactor {
-  const maxPoints = 20;
-  let points: number;
-  let reason: string;
-
-  if (budget > 0) {
-    // Higher budgets indicate more serious buyers in Bengaluru market
-    if (budget >= 1_50_00_000) {        // ≥ 1.5 Cr
-      points = 20;
-      reason = "Premium budget (≥ ₹1.5 Cr) — high-value lead";
-    } else if (budget >= 75_00_000) {    // ≥ 75 L
-      points = 16;
-      reason = "Strong budget (₹75 L – ₹1.5 Cr)";
-    } else if (budget >= 40_00_000) {    // ≥ 40 L
-      points = 12;
-      reason = "Mid-range budget (₹40 L – ₹75 L)";
-    } else {
-      points = 8;
-      reason = "Budget specified (< ₹40 L)";
-    }
-  } else {
-    points = 3;
-    reason = "Budget not specified — needs qualification";
-  }
-
-  return { name: "budget", label: "Budget Specificity", points, maxPoints, reason };
-}
-
-function scoreTimeline(timeline: BuyingTimeline): PriorityFactor {
-  const maxPoints = 25;
-  const map: Record<BuyingTimeline, { points: number; reason: string }> = {
-    immediate:        { points: 25, reason: "Ready to buy now — highest urgency" },
-    "1_to_3_months":  { points: 20, reason: "Active buyer — 1–3 month timeline" },
-    "3_to_6_months":  { points: 14, reason: "Warm prospect — 3–6 month horizon" },
-    "6_to_12_months": { points: 8,  reason: "Early-stage — 6–12 months out" },
-    beyond_12_months: { points: 4,  reason: "Long-term researcher — 12+ months" },
-    not_specified:    { points: 6,  reason: "Timeline unclear — needs clarification" },
-  };
-
-  const { points, reason } = map[timeline];
-  return { name: "timeline", label: "Buying Timeline", points, maxPoints, reason };
-}
-
-function scoreMessage(message: string): PriorityFactor {
-  const maxPoints = 20;
-  const trimmed = message.trim();
-  const wordCount = trimmed ? trimmed.split(/\s+/).length : 0;
-
-  let points: number;
-  let reason: string;
-
-  if (wordCount >= 50) {
-    points = 20;
-    reason = `Detailed message (${wordCount} words) — high engagement`;
-  } else if (wordCount >= 25) {
-    points = 15;
-    reason = `Good detail (${wordCount} words) — clear interest`;
-  } else if (wordCount >= 10) {
-    points = 10;
-    reason = `Brief message (${wordCount} words) — some context`;
-  } else if (wordCount > 0) {
-    points = 5;
-    reason = `Very short (${wordCount} words) — limited context`;
-  } else {
-    points = 0;
-    reason = "No message provided";
-  }
-
-  return { name: "message", label: "Message Quality", points, maxPoints, reason };
-}
-
-function scoreLocation(location: string): PriorityFactor {
-  const maxPoints = 15;
-  const normalised = location.trim().toLowerCase();
-
-  if (BENGALURU_LOCALITIES.has(normalised)) {
-    return {
-      name: "location",
-      label: "Location Clarity",
-      points: 15,
-      maxPoints,
-      reason: `Recognised locality: ${location}`,
-    };
-  }
-
-  // Partial match — location contains a known locality name
-  for (const loc of BENGALURU_LOCALITIES) {
-    if (normalised.includes(loc) || loc.includes(normalised)) {
-      return {
-        name: "location",
-        label: "Location Clarity",
-        points: 10,
-        maxPoints,
-        reason: `Partial match: ${location}`,
-      };
-    }
-  }
-
-  if (normalised.length > 0) {
-    return {
-      name: "location",
-      label: "Location Clarity",
-      points: 5,
-      maxPoints,
-      reason: `Unrecognised area: ${location}`,
-    };
+  switch (timeline) {
+    case "immediate":
+      points = 30;
+      reason = "Within 30 days — critical transaction window (+30)";
+      break;
+    case "1_to_3_months":
+      points = 22;
+      reason = "Within 90 days — active purchasing evaluation (+22)";
+      break;
+    case "3_to_6_months":
+      points = 14;
+      reason = "Within 180 days — mid-term decision horizon (+14)";
+      break;
+    case "6_to_12_months":
+      points = 7;
+      reason = "Beyond 180 days (6–12 months) — extended planning (+7)";
+      break;
+    case "beyond_12_months":
+      points = 7;
+      reason = "Beyond 180 days (>12 months) — exploratory horizon (+7)";
+      break;
+    case "not_specified":
+    default:
+      points = 0;
+      reason = "Timeline unknown — requires qualification (+0)";
+      break;
   }
 
   return {
-    name: "location",
-    label: "Location Clarity",
-    points: 0,
+    name: "timeline",
+    label: "Buying Timeline",
+    points,
     maxPoints,
-    reason: "No location provided",
+    reason,
   };
 }
 
-function scoreRequirement(requirement: string): PriorityFactor {
-  const maxPoints = 20;
-  const lower = requirement.toLowerCase();
+// ---------------------------------------------------------------------------
+// Factor 2: Explicit Buying Intent (Max 30 pts)
+// ---------------------------------------------------------------------------
+// B. Explicit buying intent — maximum 30 points:
+// - Explicit visit or decision/next-step request: 30.
+// - Specific pricing, availability, financing or total-cost question: 20.
+// - Explicit comparison between options: 12.
+// - Broad initial research: 6.
+// - Unclear: 0.
+export function scoreIntent(message: string, budget?: number): PriorityFactor {
+  const maxPoints = 30;
+  const lowerMsg = (message || "").toLowerCase().trim();
   let points = 0;
-  const hits: string[] = [];
+  let reason = "";
 
-  // Check for BHK mention
-  if (/\d\s*bhk/i.test(lower)) {
-    points += 6;
-    hits.push("BHK type");
+  // 1. Explicit visit or decision/next-step request (30 pts)
+  const visitOrClosingSignals = [
+    "site visit", "visit", "schedule a visit", "arrange a site visit", "tour",
+    "ready to buy", "ready to close", "sanctioned", "pre-approved", "preapproved",
+    "token", "booking amount", "advance", "finalize", "finalise", "all cash",
+    "register", "ready to move", "cheque ready", "visited two projects already",
+  ];
+
+  // 2. Specific pricing, availability, financing or total-cost question (20 pts)
+  const pricingOrFinancingSignals = [
+    "price", "pricing", "cost", "total cost", "maintenance", "loan", "financing",
+    "pre-approved", "sanctioned", "available", "availability", "rate per sqft",
+    "sqft rate", "emi", "payment plan", "bank tie-up", "bank tie-ups", "hidden cost",
+    "registration charges", "gst", "cauvery", "possession date", "handover",
+  ];
+
+  // 3. Explicit comparison between options (12 pts)
+  const comparisonSignals = [
+    "comparing", "compare", "between", "shortlisted", "shortlist", "evaluating",
+    "versus", "vs", "competitor project",
+  ];
+
+  // 4. Broad initial research (6 pts)
+  const researchSignals = [
+    "looking for", "interested in", "inquiry", "enquiry", "callback", "call me",
+    "call back", "reach out", "connect on call", "phone number", "general information",
+    "starting research", "exploring",
+  ];
+
+  if (visitOrClosingSignals.some((sig) => lowerMsg.includes(sig))) {
+    points = 30;
+    reason = "Explicit visit request or decision/next-step signal (+30)";
+  } else if (pricingOrFinancingSignals.some((sig) => lowerMsg.includes(sig)) || (budget && budget > 0 && lowerMsg.includes("?"))) {
+    points = 20;
+    reason = "Specific pricing, availability, financing or total-cost question (+20)";
+  } else if (comparisonSignals.some((sig) => lowerMsg.includes(sig))) {
+    points = 12;
+    reason = "Explicit comparison between property options (+12)";
+  } else if (researchSignals.some((sig) => lowerMsg.includes(sig)) || lowerMsg.length >= 10) {
+    points = 6;
+    reason = "Broad initial research enquiry (+6)";
+  } else {
+    points = 0;
+    reason = "Unclear buying intent (+0)";
   }
 
-  // Property type keywords
-  const types = ["apartment", "flat", "villa", "plot", "penthouse", "duplex", "row house", "independent house"];
-  for (const t of types) {
-    if (lower.includes(t)) {
-      points += 4;
-      hits.push(t);
-      break;
-    }
+  return {
+    name: "intent",
+    label: "Explicit Buying Intent",
+    points,
+    maxPoints,
+    reason,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Factor 3: Requirement Completeness (Max 25 pts)
+// ---------------------------------------------------------------------------
+// C. Requirement completeness — maximum 25 points:
+// - Known location: 5.
+// - Clear property requirement: 5.
+// - Known budget: 5.
+// - Known buying timeline: 5.
+// - At least one concrete customer need or constraint: 5.
+export function scoreRequirementCompleteness(
+  location: string,
+  requirement: string,
+  budget: number,
+  timeline: BuyingTimeline,
+  message: string,
+): PriorityFactor {
+  const maxPoints = 25;
+  let points = 0;
+  const reasons: string[] = [];
+
+  const loc = (location || "").trim();
+  const req = (requirement || "").trim();
+  const lowerReq = req.toLowerCase();
+  const lowerMsg = (message || "").toLowerCase();
+
+  // 1. Known location: 5
+  if (loc.length > 0 && loc.toLowerCase() !== "undecided") {
+    points += 5;
+    reasons.push("Known location (+5)");
+  } else {
+    reasons.push("Location undecided (+0)");
   }
 
-  // Amenity / preference keywords
-  const amenities = ["gated", "swimming", "gym", "parking", "garden", "club", "furnished", "vastu", "east facing", "corner"];
-  for (const a of amenities) {
-    if (lower.includes(a)) {
-      points += 3;
-      hits.push(a);
-      if (points >= maxPoints) break;
-    }
+  // 2. Clear property requirement: 5
+  if (req.length > 0) {
+    points += 5;
+    reasons.push("Clear property requirement (+5)");
+  } else {
+    reasons.push("Property requirement unstated (+0)");
   }
 
-  // Size mention (sq ft)
-  if (/\d+\s*(sq\.?\s*ft|sft|square\s*feet)/i.test(lower)) {
-    points += 4;
-    hits.push("area specified");
+  // 3. Known budget: 5
+  if (budget > 0) {
+    points += 5;
+    reasons.push("Known budget (+5)");
+  } else {
+    reasons.push("Budget unstated (+0)");
   }
 
-  points = Math.min(points, maxPoints);
-  const reason = hits.length > 0
-    ? `Mentions: ${hits.join(", ")}`
-    : "Vague requirement — needs clarification";
-
-  if (points === 0 && requirement.trim().length > 0) {
-    points = 3; // At least something was written
+  // 4. Known buying timeline: 5
+  if (timeline && timeline !== "not_specified") {
+    points += 5;
+    reasons.push("Known buying timeline (+5)");
+  } else {
+    reasons.push("Timeline unstated (+0)");
   }
 
-  return { name: "requirement", label: "Requirement Specificity", points, maxPoints, reason };
+  // 5. At least one concrete customer need or constraint: 5
+  const concreteConstraints = [
+    "school", "kids", "children", "parents", "elderly", "parking", "car parking",
+    "vaastu", "vastu", "facing", "high floor", "gated community", "gated",
+    "rera", "a-khata", "a khata", "ready to move", "commute", "itpl", "tech park",
+    "sq ft", "sqft", "sft", "balcony", "east", "north", "budget under", "all-inclusive",
+    "cauvery", "possession",
+  ];
+  const hasConstraint = concreteConstraints.some(
+    (c) => lowerReq.includes(c) || lowerMsg.includes(c)
+  );
+
+  if (hasConstraint) {
+    points += 5;
+    reasons.push("Concrete customer need/constraint identified (+5)");
+  } else {
+    reasons.push("No concrete constraint identified (+0)");
+  }
+
+  return {
+    name: "requirementCompleteness",
+    label: "Requirement Completeness",
+    points,
+    maxPoints,
+    reason: reasons.join("; "),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Factor 4: Engagement Depth (Max 15 pts)
+// ---------------------------------------------------------------------------
+// D. Engagement depth — maximum 15 points:
+// - Three or more meaningful customer turns in a supplied conversation: 15.
+// - Two meaningful turns: 10.
+// - One substantive initial message: 4.
+// - No usable message: 0.
+// Engagement depth is based on the available conversation depth, not the presence
+// of a specific visit request. This avoids counting the same buying-intent signal twice.
+export function scoreEngagementDepth(
+  message: string,
+  conversationTurns?: number,
+): PriorityFactor {
+  const maxPoints = 15;
+  const msg = (message || "").trim();
+  let points = 0;
+  let reason = "";
+
+  if (typeof conversationTurns === "number" && conversationTurns >= 3) {
+    points = 15;
+    reason = "Three or more meaningful customer turns in conversation (+15)";
+  } else if (typeof conversationTurns === "number" && conversationTurns === 2) {
+    points = 10;
+    reason = "Two meaningful customer turns in conversation (+10)";
+  } else if (msg.length >= 20 || (typeof conversationTurns === "number" && conversationTurns === 1)) {
+    points = 4;
+    reason = "One substantive initial message (+4)";
+  } else if (msg.length > 0) {
+    points = 2;
+    reason = "Brief non-substantive message (<20 chars) (+2)";
+  } else {
+    points = 0;
+    reason = "No usable message (+0)";
+  }
+
+  return {
+    name: "engagementDepth",
+    label: "Engagement Depth",
+    points,
+    maxPoints,
+    reason,
+  };
 }
 
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
-function bandFromScore(total: number): PriorityBand {
-  if (total >= 70) return "hot";
-  if (total >= 40) return "warm";
+export function bandFromScore(total: number): PriorityBand {
+  if (total >= 75) return "hot";
+  if (total >= 45) return "warm";
   return "cold";
 }
 
 /**
- * Compute a deterministic priority score for a lead.
- * This function is pure — no side effects, no AI calls.
+ * Compute the 4-factor deterministic priority score for a lead.
+ * Pure function: deterministic, instant (0ms), reproducible.
  */
-export function computePriority(lead: Pick<Lead, "budget" | "buyingTimeline" | "customerMessage" | "location" | "propertyRequirement">): PriorityScore {
+export function computePriority(lead: {
+  budget: number;
+  buyingTimeline: BuyingTimeline;
+  customerMessage: string;
+  location: string;
+  propertyRequirement: string;
+  conversationTurns?: number;
+}): PriorityScore {
   const factors: PriorityFactor[] = [
-    scoreBudget(lead.budget),
     scoreTimeline(lead.buyingTimeline),
-    scoreMessage(lead.customerMessage),
-    scoreLocation(lead.location),
-    scoreRequirement(lead.propertyRequirement),
+    scoreIntent(lead.customerMessage, lead.budget),
+    scoreRequirementCompleteness(
+      lead.location,
+      lead.propertyRequirement,
+      lead.budget,
+      lead.buyingTimeline,
+      lead.customerMessage,
+    ),
+    scoreEngagementDepth(lead.customerMessage, lead.conversationTurns),
   ];
 
-  const total = Math.min(100, factors.reduce((sum, f) => sum + f.points, 0));
-  return { total, band: bandFromScore(total), factors };
+  const total = Math.max(0, Math.min(100, factors.reduce((sum, f) => sum + f.points, 0)));
+  const band = bandFromScore(total);
+
+  return { total, band, factors };
 }
 
 /**
- * Return the colour scheme for a priority band.
- * Used by UI components for consistent badge/indicator colours.
+ * Priority band colors and tokens for UI badges.
  */
 export function priorityBandColor(band: PriorityBand): {
   bg: string;
   text: string;
   dot: string;
   border: string;
+  label: string;
 } {
   switch (band) {
     case "hot":
       return {
-        bg: "rgba(239, 68, 68, 0.10)",
-        text: "#ef4444",
+        bg: "rgba(239, 68, 68, 0.12)",
+        text: "var(--sd-danger, #ef4444)",
         dot: "#ef4444",
-        border: "rgba(239, 68, 68, 0.25)",
+        border: "rgba(239, 68, 68, 0.28)",
+        label: "Hot",
       };
     case "warm":
       return {
-        bg: "rgba(245, 158, 11, 0.10)",
-        text: "#f59e0b",
+        bg: "rgba(245, 158, 11, 0.12)",
+        text: "var(--sd-warm, #f59e0b)",
         dot: "#f59e0b",
-        border: "rgba(245, 158, 11, 0.25)",
+        border: "rgba(245, 158, 11, 0.28)",
+        label: "Warm",
       };
     case "cold":
       return {
-        bg: "rgba(100, 116, 139, 0.10)",
-        text: "#64748b",
+        bg: "rgba(100, 116, 139, 0.12)",
+        text: "var(--sd-subtle, #64748b)",
         dot: "#64748b",
-        border: "rgba(100, 116, 139, 0.25)",
+        border: "rgba(100, 116, 139, 0.28)",
+        label: "Cold",
       };
   }
 }
