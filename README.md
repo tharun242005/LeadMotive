@@ -41,7 +41,7 @@ LeadMotive is an enterprise-grade sales intelligence workbench designed for high
 │          │                     │                           │                │
 │          ▼                     ▼                           ▼                │
 │  ┌───────────────────────────────────────────────────────────────────────┐  │
-│  │                       Workspace State Orchestrator                     │  │
+│  │                       Workspace State Orchestrator                    │  │
 │  │       (React 19 Hooks + LocalStorage Versioned Persistence Layer)     │  │
 │  └───────────────────────────────────┬───────────────────────────────────┘  │
 └──────────────────────────────────────┼──────────────────────────────────────┘
@@ -50,11 +50,11 @@ LeadMotive is an enterprise-grade sales intelligence workbench designed for high
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                      NEXT.JS 16 SERVER-SIDE RUNTIME                         │
 │                                                                             │
-│  ┌─────────────────┐ ┌───────────────┐ ┌────────────────┐ ┌──────────────┐ │
+│  ┌─────────────────┐ ┌───────────────┐ ┌────────────────┐ ┌─────────────-─┐ │
 │  │POST/leads/analyze│ │POST/leads/plan│ │POST/leads/chat │ │POST/rehearsal│ │
-│  └────────┬────────┘ └───────┬───────┘ └───────┬────────┘ └──────┬───────┘ │
-│           │                  │                 │                 │         │
-│           ▼                  ▼                 ▼                 ▼         │
+│  └────────┬────────┘ └───────┬───────┘ └───────┬────────┘ └──────┬───────-┘ │
+│           │                  │                 │                 │          │
+│           ▼                  ▼                 ▼                 ▼          │
 │  ┌───────────────────────────────────────────────────────────────────────┐  │
 │  │                           AI Client Engine                            │  │
 │  │   - Server Environment Secret Isolation (GEMINI_API_KEY)              │  │
