@@ -1,238 +1,300 @@
-# LeadMotive — Real Estate Lead Intelligence
+# LeadMotive — AI-Powered Real Estate Lead Intelligence
 
-> AI-Powered Real Estate Lead Intelligence. Know which buyer to move next. Know what to say.
+**Know which buyer to move next. Know what to say.**
 
-LeadMotive is an enterprise-grade sales intelligence workbench designed for high-velocity real estate markets. It solves the critical triage bottleneck in high-ticket property sales: helping sales representatives decide who to call within the golden 15-minute window, uncovering hidden buyer anxieties (pricing per sqft, RERA delivery delays, A-Khata legal validity), and enabling reps to rehearse objections before dialing.
+LeadMotive is a real-estate sales intelligence application that helps a salesperson understand inbound property enquiries, prioritise leads with an explainable rules-based score, practise difficult buyer conversations, and organise lead-specific follow-up actions.
 
----
+<p align="left">
+  <a href="https://iqol-six.vercel.app/"><strong>Live application</strong></a> ·
+  <a href="https://iqol-six.vercel.app/workspace"><strong>Open workspace</strong></a> ·
+  <a href="https://github.com/tharun242005/LeadMotive"><strong>Source repository</strong></a>
+</p>
 
-## What LeadMotive Solves
+> **Demo-data and privacy notice:** The included lead examples are synthetic. The current application stores leads and plan progress in browser `localStorage`; it does not provide a shared, server-side customer database. Do not enter real customer personal, financial, or otherwise sensitive information into a demo deployment. Model-generated property details, availability, prices, legal information, financial estimates, and possession dates must be independently verified before being communicated to a customer.
 
-1. **Lead Triage Bottleneck**: Real estate teams receive dozens of raw inquiries daily. Reps waste hours manually skimming messages to guess urgency. LeadMotive calculates a 0ms deterministic priority score (0–100) instantly categorizing leads into **Act Now**, **Follow Up**, and **Nurture** bands.
-2. **Hidden Buyer Objections**: Inbound inquiries often hide real objections behind casual inquiries. LeadMotive leverages server-side Google Gemini models to extract structured intent, specific property requirements, and grounded objection quotes verified against raw text.
-3. **Execution Hesitation & Cold Calls**: Salespeople often enter calls cold and falter when prospects push back on price or possession timelines. LeadMotive’s signature **Objection Rehearsal Studio** allows reps to simulate conversations with an AI buyer and receive structured 4-dimension coaching debriefs before picking up the telephone.
+## Features
 
----
+### AI-assisted lead analysis
 
-## Screens & Major Workflows
+Submit a lead's name, location, property requirement, budget, buying timeline, and customer message. The analysis workflow can produce:
 
-| Screen / Feature | Path | Key Capabilities |
-|---|---|---|
-| **Public Homepage** | `/` | Comprehensive product landing page, interactive canonical lead preview, transparent 4-factor scoring breakdown, and the Lead Momentum Plan showcase (`#momentum`). |
-| **Sales Workbench** | `/workspace` | 3-pane sales intelligence workspace: searchable & filterable lead queue, scannable AI analysis card, grounded objection quotes, copyable WhatsApp drafts, and Deal Velocity timeline. |
-| **Contextual AI Coach** | `/workspace` (Right Pane) | Lead-specific co-pilot answering sales questions ("Give me a 30s call opener", "Why Hot rather than Warm?", "Handling financing concerns") with 100% context isolation. |
-| **Objection Rehearsal Studio** | `/workspace` (Rehearsal Modal) | Interactive practice arena: AI simulates the buyer's persona voicing authentic resistance; upon completion, generates a 4-dimension coaching debrief (1–5 rubric). |
-| **Lead Momentum Plan Studio** | `/workspace/momentum` | Dynamic 3–10 step sequential action roadmaps with pre-flight fact-check chips, personalized WhatsApp/email drafts, decision branches, and progress tracking with history preservation. |
+- A concise lead summary and buying-intent assessment.
+- A structured view of property needs and constraints.
+- Potential objections and customer evidence quotes, with quote-grounding checks.
+- Missing information and details that need verification.
+- A recommended next action and a suggested customer response.
 
----
+The language model assists with interpretation and drafting. Its output is not a source of verified property inventory or professional legal, lending, tax, or investment advice.
 
-## Architecture Overview
+### Explainable lead prioritisation
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              CLIENT BROWSER                                 │
-│                                                                             │
-│  ┌───────────────┐  ┌──────────────────────┐  ┌──────────────────────────┐  │
-│  │    NavRail    │  │      LeadQueue       │  │        LeadDetail        │  │
-│  │ (Workspace,   │  │  (Search, Priority   │  │ (Intent, Score Math,     │  │
-│  │  Intake, AI   │  │   Filters, Metric    │  │  Objections, Timeline,   │  │
-│  │  Diagnostics) │  │   Badges, Skeletons) │  │  Smart Responses)        │  │
-│  └───────┬───────┘  └──────────┬───────────┘  └────────────┬─────────────┘  │
-│          │                     │                           │                │
-│          ▼                     ▼                           ▼                │
-│  ┌───────────────────────────────────────────────────────────────────────┐  │
-│  │                       Workspace State Orchestrator                    │  │
-│  │       (React 19 Hooks + LocalStorage Versioned Persistence Layer)     │  │
-│  └───────────────────────────────────┬───────────────────────────────────┘  │
-└──────────────────────────────────────┼──────────────────────────────────────┘
-                                       │ Secure JSON Payload (No Client API Keys)
-                                       ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                      NEXT.JS 16 SERVER-SIDE RUNTIME                         │
-│                                                                             │
-│  ┌─────────────────┐ ┌───────────────┐ ┌────────────────┐ ┌─────────────-─┐ │
-│  │POST/leads/analyze│ │POST/leads/plan│ │POST/leads/chat │ │POST/rehearsal│ │
-│  └────────┬────────┘ └───────┬───────┘ └───────┬────────┘ └──────┬───────-┘ │
-│           │                  │                 │                 │          │
-│           ▼                  ▼                 ▼                 ▼          │
-│  ┌───────────────────────────────────────────────────────────────────────┐  │
-│  │                           AI Client Engine                            │  │
-│  │   - Server Environment Secret Isolation (GEMINI_API_KEY)              │  │
-│  │   - Typed Runtime Schema Enforcer & Verbatim Quotation Verifier       │  │
-│  │   - Resilient Offline Bengaluru Heuristic Fallback Engine             │  │
-│  └───────────────────────────────────┬───────────────────────────────────┘  │
-└──────────────────────────────────────┼──────────────────────────────────────┘
-                                       │ HTTPS REST
-                                       ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                 GOOGLE GEMINI API (gemini-3.8-flash)                        │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
+LeadMotive calculates a deterministic score locally from four factors. The score is a qualification heuristic, **not a probability that a lead will convert**.
 
----
+| Factor | Maximum | Main rule |
+|---|---:|---|
+| Buying timeline | 30 | Earlier stated buying timelines receive more points. |
+| Explicit buying intent | 30 | Concrete actions such as a viewing request receive more points than broad research. |
+| Requirement completeness | 25 | Five points each for meaningful location, property requirement, budget, timeline, and a concrete need or constraint. |
+| Engagement depth | 15 | Points depend on the number of meaningful conversation turns and whether the initial message is substantive. |
+| **Total** | **100** | Sum of the four factors. |
 
-## AI Model & Integration Details
+Priority bands are consistent across the interface:
 
-- **Official SDK**: `@google/genai` (v2.30.0).
-- **Default Model**: `gemini-3.8-flash` (Google's latest Flash-class model offering sub-500ms latency and native structured JSON output).
-- **Server-Only Invocation**: All AI requests originate strictly from Next.js server route handlers (`src/app/api/leads/*`). No client-side API keys exist, and no secrets are exposed to the browser.
-- **Untrusted Input Shielding**: Raw customer inquiry text is isolated inside triple quotes (`"""`) with strict anti-override system instructions preventing prompt injections.
-- **Verbatim Quotation Grounding**: Extracted objection evidence is compared against the original customer submission. If not an exact verbatim match, it is flagged with `[Unverified Quote]` to eliminate hallucinated evidence.
-- **Dual-Mode Telemetry**: Every response includes an `AIMetadata` header (`mode: "live"` vs `mode: "fallback"`). If the API key is not configured or rates are exceeded, the server transitions to an offline Bengaluru heuristic engine without throwing unhandled exceptions.
+- **Act Now:** 75–100
+- **Follow Up:** 45–74
+- **Nurture:** 0–44
 
----
+The score breakdown is visible to the salesperson. Priority labels guide attention; they do not guarantee customer behaviour or sales outcomes.
 
-## 4-Factor Deterministic Scoring Formula
+### Contextual AI Coach
 
-Unlike systems that rely on unpredictable LLM scoring, LeadMotive uses a pure, deterministic 100-point rubric calculated in 0ms on the client:
+The Coach answers questions in the context of the currently selected lead, such as preparing a call opener or planning how to discuss a documented concern. Lead context is scoped to the active workflow; the Coach should not be treated as a source of unverified property facts.
 
-$$\text{Total Priority Score} = \text{Timeline} + \text{Intent} + \text{Completeness} + \text{Depth}$$
+### Objection Rehearsal
 
-| Factor | Maximum | Scoring Breakdown |
-|---|---|---|
-| **Buying Timeline** | **30 pts** | Immediate (<30d): 30 pts<br>1–3 months: 22 pts<br>3–6 months: 14 pts<br>>6 months: 7 pts<br>Not specified: 0 pts |
-| **Explicit Buying Intent** | **30 pts** | Explicit visit / purchase readiness / token ready: 30 pts<br>Pricing, loans, total ownership cost inquiries: 20 pts<br>Comparing two specific projects: 12 pts<br>General research / callback: 6 pts<br>Unclear: 0 pts |
-| **Requirement Completeness** | **25 pts** | 5 pts each for: Location (5) + Typology (5) + Budget (5) + Timeline (5) + Concrete Constraint (5) |
-| **Engagement Depth** | **15 pts** | ≥3 conversation turns: 15 pts<br>2 turns: 10 pts<br>Substantive initial message (≥20 chars): 4 pts<br>Empty / unreadable: 0 pts |
+The salesperson can practise a buyer conversation, including **Immediate Buyer Practice** and **Documented Concern** scenarios, where available in the current interface. The rehearsal workflow supports roleplay and a coaching debrief across four dimensions:
 
-### Priority Bands
-- **🔥 Act Now (75–100 pts)**: Immediate action window, strong financial readiness. Target response: **< 15 minutes**.
-- **⚡ Follow Up (45–74 pts)**: Active qualification phase. Target response: **< 2 hours**.
-- **❄️ Nurture (0–44 pts)**: Exploratory research or vague requirements. Automated nurture drip.
+- Empathy and rapport
+- Objection addressing
+- Value proposition
+- Call-to-action clarity
 
-> **CRITICAL DISCLAIMER**: The priority score is an explainable qualification heuristic, **not a statistical probability of conversion**.
+The scorecard is educational feedback, not a prediction of conversion.
 
----
+### Lead Momentum Plan
 
-## Objection Rehearsal Flow
+The plan studio generates a lead-specific sequence of follow-up actions (between 3 and 10 steps, subject to the plan workflow), with relevant timing, customer-response drafts, progress tracking, and adaptation support. Message drafts are for salesperson review and copying; LeadMotive does not automatically contact customers.
 
-1. **Launch**: Click **Practise this conversation** on any lead in the workspace.
-2. **Roleplay Simulation (`mode: "roleplay"`)**: The AI buyer introduces themselves voicing the prospect’s documented objection (e.g. school commute delays or high EMI outflow). The salesperson drafts and sends counter-arguments.
-3. **Buyer Pushback**: If the salesperson's reply is dismissive or lacks concrete project specifics, the buyer pushes back realistically.
-4. **Coaching Debrief (`mode: "coach"`)**: Click **Request Coaching Debrief**. The AI converts into a sales coach, evaluating the transcript across a 4-dimension 1–5 rubric:
-   - Empathy & Rapport (1–5)
-   - Objection Addressing (1–5)
-   - Value Proposition (1–5)
-   - Call-to-Action Clarity (1–5)
-5. **Score & Feedback**: Receives an overall score (1–10), key strengths, an area for improvement, an alternative phrased script, and the educational non-prediction disclaimer.
+### Day and Night themes
 
----
+- **Day Mode — Terracotta Editorial:** warm ivory surfaces, charcoal navigation, and restrained terracotta accents.
+- **Night Mode — Midnight Tech:** deep navy surfaces, crisp text, and electric-cyan accents.
 
-## Repository Structure
+Priority colours are separate from the general theme accent: red for Act Now, amber/orange for Follow Up, and blue for Nurture.
 
-```
-src/
-├── app/
-│   ├── page.tsx                    # Public product homepage (/)
-│   ├── workspace/page.tsx          # Sales intelligence workspace (/workspace)
-│   ├── workspace/momentum/page.tsx # Lead Momentum Plan workbench (/workspace/momentum)
-│   ├── api/leads/
-│   │   ├── analyze/route.ts        # POST: Lead analysis & structured extraction
-│   │   ├── plan/route.ts           # POST: Momentum plan generation & adaptation
-│   │   ├── chat/route.ts           # POST: Contextual sales coach
-│   │   ├── rehearsal/route.ts      # POST: Objection rehearsal & coaching debrief
-│   │   └── diagnostics/route.ts    # GET: Server AI readiness & latency ping
-│   ├── globals.css                 # Design tokens, themes & layout styles
-│   └── layout.tsx                  # Root layout with theme initialization
-├── components/
-│   ├── home/                       # Public homepage components & Momentum showcase
-│   ├── app-shell/                  # Workspace shell, NavRail, ThemeToggle, DiagnosticsModal
-│   ├── momentum/                   # MomentumWorkspace, StepCard, PlanAdaptModal
-│   ├── leads/                      # LeadQueue, LeadIntakeModal, LeadList
-│   ├── analysis/                   # LeadDetail, AnalysisCard, PriorityBreakdown
-│   ├── copilot/                    # ContextualCoach, SuggestedPrompts
-│   └── rehearsal/                  # RehearsalModal, CoachingDebriefView
-├── lib/
-│   ├── ai/                         # Gemini client, prompt templates, schemas, fallback engines
-│   ├── leads/                      # 4-factor scoring engine, synthetic seed leads, momentum fixtures
-│   ├── storage/                    # LocalStorage versioned persistence (leads, plans, rehearsals)
-│   └── utils/                      # Formatting helpers (INR currency, dates, timelines)
-└── types/                          # TypeScript contracts (lead.ts, ai.ts)
-tests/
-├── scoring.test.mjs                # 4-factor scoring contracts & band boundary tests (6 tests)
-├── plan.test.mjs                   # Momentum Plan schema, variable length & adaptation tests (5 tests)
-├── analysis.test.mjs               # AI analysis schema, quote verification & error tests (4 tests)
-├── chat.test.mjs                   # Contextual coach grounding & injection protection tests (9 tests)
-├── rehearsal.test.mjs              # Objection rehearsal roleplay & 4-dimension coaching tests (12 tests)
-└── security_and_resilience.test.mjs# Fallback analysis, context isolation & safety tests (7 tests)
-docs/
-├── ARCHITECTURE.md                 # System architecture & component data flows
-├── LEAD_SCORING.md                 # 4-factor deterministic scoring mathematical specification
-├── AI_DECISIONS.md                 # AI engineering, prompt design & model selection rationale
-├── TEST_PLAN.md                    # Comprehensive test verification plan (43 automated tests)
-├── DEMO_SCRIPT.md                  # 5-minute technical interviewer walkthrough script
-├── AI_USAGE_DISCLOSURE.md          # Tooling attribution & development governance
-├── RELEASE_AUDIT.md                # Master release audit & 10-criteria coverage report
-└── REPOSITORY_CLEANUP.md           # Record of legacy files removed during pivot
+## Application routes
+
+| Route | Purpose |
+|---|---|
+| `/` | Public product homepage and synthetic interactive preview. |
+| `/workspace` | Lead queue, intake, analysis, score explanation, AI Coach, and rehearsal entry points. |
+| `/workspace/momentum` | Lead Momentum Plan workspace. |
+| `GET /api/leads/diagnostics` | Reports AI-provider configuration and diagnostics status without returning secrets. |
+| `POST /api/leads/analyze` | Validates a lead-analysis request and returns structured analysis. |
+| `POST /api/leads/chat` | Handles lead-contextual Coach requests. |
+| `POST /api/leads/rehearsal` | Handles buyer roleplay and coaching requests. |
+| `POST /api/leads/plan` | Generates or adapts a Momentum Plan. |
+
+The exact request and response contracts are defined in the source and runtime schemas; consult those when integrating with the API. Successful HTTP status alone does not prove that an external model responded—check response metadata for the actual provider and mode.
+
+## Architecture
+
+```text
+Browser (Next.js / React UI)
+  ├── Lead queue, intake, selected-lead analysis
+  ├── Local deterministic scoring and priority display
+  ├── Browser localStorage for leads and supported saved workflows
+  └── Requests to same-origin Next.js API routes
+          │
+          ▼
+Next.js server-side API handlers
+  ├── Request validation and prompt construction
+  ├── Gemini primary provider (when configured and available)
+  ├── Optional Groq secondary provider (when configured and available)
+  ├── Shared response validation and factual-grounding checks
+  ├── Bounded retry / timeout / rate-limit handling
+  └── Clearly labelled deterministic offline heuristic fallback
+          │
+          ├── Google Gemini API
+          └── Groq API (optional)
 ```
 
----
+All provider calls should be made server-side. API credentials belong in server environment variables, never in client-side code or variables prefixed with `NEXT_PUBLIC_`.
 
-## Local Setup & Verification
+### AI provider configuration
 
-### 1. Prerequisites
-- Node.js 18.18+ or 20+
-- npm 9+
+- **Primary provider:** Google Gemini using the official `@google/genai` SDK.
+- **Primary model default:** `gemini-3.5-flash-lite`.
+- **Optional secondary provider:** Groq, using the official OpenAI-compatible Chat Completions API.
+- **Secondary model default:** `openai/gpt-oss-20b`.
+- **Last fallback:** deterministic local heuristics.
 
-### 2. Installation
+The intended request order is Gemini → Groq (if configured and available) → offline heuristics. Provider quotas, credentials, service availability, and plan limits can affect which provider serves a request. There is no guarantee of uninterrupted or unlimited free service. The UI/API should identify whether the result came from Gemini, Groq, or offline heuristics; never describe heuristic output as live AI.
+
+The model identifiers above are project defaults, not a guarantee that a model is available to every account or remains available indefinitely. Check the providers' current model documentation and the project's actual diagnostics when troubleshooting.
+
+- [Gemini API models](https://ai.google.dev/gemini-api/docs/models)
+- [Gemini API keys](https://aistudio.google.com/app/apikey)
+- [Groq model documentation](https://console.groq.com/docs/models)
+- [Groq rate limits](https://console.groq.com/docs/rate-limits)
+
+## Tech stack
+
+- **Framework:** Next.js 16 (App Router)
+- **UI:** React 19, TypeScript, Tailwind CSS v4
+- **Animation:** Framer Motion
+- **Icons:** Lucide React
+- **Primary AI SDK:** `@google/genai`
+- **Data persistence:** browser `localStorage` for the current single-browser evaluation/demo workflow
+- **Validation and safety:** application-level request/response validation, prompt-injection mitigations, quote grounding, provider provenance, and fallbacks
+- **Hosting:** Vercel
+
+Use `package.json` and `package-lock.json` as the authoritative source for the exact installed dependency versions.
+
+## Run locally
+
+### Prerequisites
+
+- A supported Node.js LTS version compatible with the installed Next.js version.
+- npm.
+- Optional API keys for live AI functionality.
+
+### 1. Clone the repository
+
 ```bash
-# Clone and install dependencies
-git clone <repo-url>
-cd leadmotive
+git clone https://github.com/tharun242005/LeadMotive.git
+cd LeadMotive
 npm install
 ```
 
-### 3. Environment Variables
-Create `.env.local` in the project root:
+### 2. Configure environment variables
+
+Create a local environment file by copying the example:
+
+**PowerShell (Windows):**
+
+```powershell
+Copy-Item .env.example .env.local
+```
+
+**macOS / Linux:**
+
 ```bash
 cp .env.example .env.local
 ```
-Configure environment variables:
+
+Edit `.env.local` and set your own values:
+
 ```env
-# Primary AI Provider: Google Gemini (Server-only secret)
-# Get a key at: https://aistudio.google.com/apikey
+# Primary provider — Google Gemini
 GEMINI_API_KEY=your_gemini_api_key_here
 GEMINI_MODEL=gemini-3.5-flash-lite
 
-# Optional Secondary AI Provider: Groq (Server-only secret)
-# Get an optional key at: https://console.groq.com/keys
+# Optional secondary provider — Groq
 GROQ_API_KEY=your_groq_api_key_here
 GROQ_MODEL=openai/gpt-oss-20b
 ```
-*(Note: `GROQ_API_KEY` is completely optional. If only Gemini is configured, LeadMotive operates with Gemini. If Gemini encounters rate limits (429) or transient outages, it cascades to Groq (using `openai/gpt-oss-20b` if configured) or smoothly transitions to its high-fidelity deterministic offline Bengaluru heuristic engine with full telemetry disclosure).*
 
-### 4. Running the Dev Server
+You can use Gemini without a Groq key. If neither external provider is configured or available, the application may use its explicitly labelled offline heuristic fallback.
+
+**Security:** Never commit `.env.local`, paste keys into issue reports, or use `NEXT_PUBLIC_` names for provider credentials. If a key is exposed, revoke it with the provider and create a replacement. Free-tier provider terms may govern how submitted prompts and outputs are processed; use synthetic data for evaluation.
+
+### 3. Start the development server
+
 ```bash
 npm run dev
 ```
-Open [http://localhost:3000](http://localhost:3000) for the homepage, or [http://localhost:3000/workspace](http://localhost:3000/workspace) for the sales workbench.
 
-### 5. Running Automated Tests
+Open:
+
+- Homepage: <http://localhost:3000>
+- Workspace: <http://localhost:3000/workspace>
+
+If port 3000 is already in use, stop the existing development server or select another port rather than terminating an unidentified process.
+
+### 4. Run the production build locally
+
+```bash
+npm run build
+npm run start
+```
+
+If port 3000 is occupied, use a different port, for example:
+
+```bash
+npx next start -p 3001
+```
+
+Then open <http://localhost:3001>.
+
+## Tests and quality checks
+
+Run the project checks from the repository root:
+
 ```bash
 npm test
-```
-Executes all test suites with 0 failures.
-
-### 6. Code Quality Checks
-```bash
-# TypeScript compilation check
-npx tsc --noEmit
-
-# ESLint check
 npm run lint
-
-# Production Next.js build
+npx tsc --noEmit
 npm run build
 ```
 
+The `npm test` script invokes the scoring, plan, analysis, chat, rehearsal, security/resilience, provider-reliability, API endpoint, and real-estate scenario test files configured in `package.json`. Test counts can change as tests are updated; use the actual command output when reporting the current result.
+
+Some provider failure scenarios should use mocked responses so tests do not exhaust free API quota. Run only a small number of genuine provider smoke tests when credentials and quota permit, and distinguish live-provider tests from mocked failover tests.
+
+## Deployment on Vercel
+
+The current public deployment is:
+
+- [https://iqol-six.vercel.app](https://iqol-six.vercel.app)
+
+The repository is public at:
+
+- [https://github.com/tharun242005/LeadMotive](https://github.com/tharun242005/LeadMotive)
+
+To deploy from the local project using the Vercel CLI:
+
+```bash
+npx vercel
+```
+
+Use the preview deployment to check changes. When verified, deploy the current local source to production:
+
+```bash
+npx vercel --prod
+```
+
+Alternatively, connect the GitHub repository to the existing Vercel project to enable Git-based deployments according to the project's Vercel settings.
+
+### Configure production environment variables
+
+In Vercel, open the project settings and add the same variable names (`GEMINI_API_KEY`, `GEMINI_MODEL`, `GROQ_API_KEY`, and `GROQ_MODEL`) to the appropriate server environment, especially **Production**. API keys must be stored as secrets. Local `.env.local` values are not automatically uploaded to Vercel. After changing environment variables, create a new deployment.
+
+After deployment, test the public URL in a fresh browser session. Verify lead analysis, Coach, Practice, Momentum Plan, theme switching, provider metadata, and the failure/fallback states. A successful local build does not by itself prove that production environment variables or live AI provider calls are working.
+
+## Data, limitations, and responsible use
+
+- **Browser-local persistence:** Leads and supported plan state are stored in the current browser's `localStorage`. This is suitable for a single-user evaluation/demo but does not provide multi-user synchronisation, central backup, or server-side access control. Clearing browser data may remove records.
+- **Synthetic data:** The included Bengaluru-style examples are fictional demonstrations. They are not evidence of actual listings, prices, schools, travel times, legal status, or availability.
+- **Model output:** AI-generated text can be incomplete or inaccurate. Verify inventory, locality details, prices, possession dates, financing calculations, RERA status, title/khata details, and other material claims from authoritative sources before using them with a customer.
+- **Prioritisation:** The lead score is a deterministic, explainable rubric. It is not trained on historical conversion outcomes and is not a statistical conversion probability.
+- **Provider availability:** Gemini and Groq have independent quotas, availability, and terms. When both are unavailable, the offline heuristic may provide limited functionality; it is not equivalent to an LLM response.
+- **Privacy:** Do not use real customer personal or sensitive data in public/free-tier demonstrations. Review each provider's current terms and privacy documentation before processing any non-synthetic data.
+- **No automatic outreach:** Customer-facing message drafts are intended for human review. The app does not promise that messages are sent to customers automatically.
+
+## Project documentation
+
+The `docs/` directory contains additional implementation and evaluation material, including:
+
+- `ARCHITECTURE.md` — architecture and data flow.
+- `LEAD_SCORING.md` — scoring specification.
+- `AI_DECISIONS.md` — AI integration and design decisions.
+- `TEST_PLAN.md` — test plan.
+- `DEMO_SCRIPT.md` — demonstration walkthrough.
+- `AI_USAGE_DISCLOSURE.md` — AI and development-tool disclosure.
+- `RELEASE_AUDIT.md` and release-readiness reports — implementation and QA records.
+
+Refer to the actual test output and current code if a report and implementation appear inconsistent.
+
+## Acknowledgements
+
+Built by **Tharun P** for the LeadMotive project.
+
+- Email: [run40081@gmail.com](mailto:run40081@gmail.com)
+- GitHub: [tharun242005](https://github.com/tharun242005)
+- Project repository: [LeadMotive](https://github.com/tharun242005/LeadMotive)
+- Live application: [iqol-six.vercel.app](https://iqol-six.vercel.app)
+
 ---
 
-## Browser Persistence & Free-Tier Boundaries
-
-1. **Storage Limits**: Data is persisted in the browser via `localStorage` under `leadmotive_leads_v1`. It is designed for single-user evaluation and demo sessions. In production, this layer swaps for PostgreSQL / Supabase with Row Level Security.
-2. **Free-Tier API Constraints**: Google's Gemini Developer API free-tier imposes rate limits (15 RPM). If exceeded, LeadMotive automatically transitions to offline heuristics without crashing.
-3. **Synthetic Bengaluru Data**: All records, names, pricing, and phone numbers are 100% synthetic fixtures for Bengaluru property corridors. Real customer PII must never be entered under free-tier API terms.
-
-
-**Built by [THARUN P](https://www.linkedin.com/in/tharun-p-4146b4318/) for [LeadMotive](https://github.com/tharun242005)**
-
+*LeadMotive is a demonstration and decision-support project. It is not a source of verified property inventory, legal advice, lending approval, or guaranteed investment or sales outcomes.*
