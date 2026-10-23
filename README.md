@@ -194,7 +194,7 @@ tests/
 ├── rehearsal.test.mjs              # Objection rehearsal roleplay simulation, 4-dimension debrief rubric & boundaries (20 tests)
 ├── security_and_resilience.test.mjs# Offline fallback analysis, prompt injection shielding & context isolation (7 tests)
 ├── ai_provider_reliability.test.mjs# Provider cascade, 429 quota failover to Groq, timeout & invalid key handling (15 tests)
-├── plan_provider_resilience.test.mjs# Timeout headroom (20s/12s/10s), error categorization, schema validation & telemetry (9 tests)
+├── plan_provider_resilience.test.mjs# Timeout headroom (10s/10s/5s), Groq failover, independent diagnostics & modal scrolling (11 tests)
 ├── api_live_endpoints.test.mjs     # End-to-end integration tests for diagnostics, analyze, chat, and rehearsal routes (9 tests)
 └── real_estate_cases.test.mjs      # Real-world Bengaluru micro-market test cases (A through H) & boundary tests (8 tests)
 docs/
