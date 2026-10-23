@@ -1,5 +1,5 @@
 // ============================================================================
-// SignalDesk — Browser localStorage Persistence
+// LeadMotive — Browser localStorage Persistence
 // ============================================================================
 //
 // All lead data lives in the browser. This module provides:
@@ -18,10 +18,16 @@
 import type { Lead, LeadMomentumPlan, StepStatus, RehearsalSession } from "@/types/lead";
 import { SEED_LEADS } from "@/lib/leads/fixtures";
 import { SEEDED_MOMENTUM_PLANS } from "@/lib/leads/momentum-fixtures";
+import { normalizeAssistantPriorityText, bandFromScore, computePriority } from "@/lib/leads/scoring";
 
-const STORAGE_KEY = "signaldesk_leads_v1";
-const PLANS_STORAGE_KEY = "signaldesk_momentum_plans_v1";
-const REHEARSALS_STORAGE_KEY = "signaldesk_rehearsals_v1";
+const STORAGE_KEY = "leadmotive_leads_v1";
+const LEGACY_STORAGE_KEY = "signaldesk_leads_v1";
+
+const PLANS_STORAGE_KEY = "leadmotive_momentum_plans_v1";
+const LEGACY_PLANS_STORAGE_KEY = "signaldesk_momentum_plans_v1";
+
+const REHEARSALS_STORAGE_KEY = "leadmotive_rehearsals_v1";
+const LEGACY_REHEARSALS_STORAGE_KEY = "signaldesk_rehearsals_v1";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -29,7 +35,7 @@ const REHEARSALS_STORAGE_KEY = "signaldesk_rehearsals_v1";
 
 function isLocalStorageAvailable(): boolean {
   try {
-    const testKey = "__signaldesk_test__";
+    const testKey = "__leadmotive_test__";
     localStorage.setItem(testKey, "1");
     localStorage.removeItem(testKey);
     return true;
@@ -38,35 +44,47 @@ function isLocalStorageAvailable(): boolean {
   }
 }
 
-function isValidLead(obj: unknown): obj is Lead {
-  if (!obj || typeof obj !== "object") return false;
-  const o = obj as Record<string, unknown>;
+/**
+ * Validate that a parsed object conforms to minimal Lead shape.
+ * Protects against corrupted storage entries.
+ */
+function isValidLead(item: unknown): item is Lead {
+  if (!item || typeof item !== "object") return false;
+  const cand = item as Record<string, unknown>;
   return (
-    typeof o.id === "string" &&
-    typeof o.name === "string" &&
-    typeof o.location === "string" &&
-    typeof o.customerMessage === "string" &&
-    typeof o.createdAt === "string"
+    typeof cand.id === "string" &&
+    typeof cand.name === "string" &&
+    typeof cand.location === "string" &&
+    typeof cand.propertyRequirement === "string" &&
+    typeof cand.budget === "number" &&
+    typeof cand.buyingTimeline === "string" &&
+    typeof cand.customerMessage === "string" &&
+    typeof cand.createdAt === "string" &&
+    typeof cand.updatedAt === "string" &&
+    cand.priority !== undefined &&
+    typeof (cand.priority as Record<string, unknown>).total === "number" &&
+    typeof (cand.priority as Record<string, unknown>).band === "string"
   );
 }
 
-function isValidPlan(obj: unknown): obj is LeadMomentumPlan {
-  if (!obj || typeof obj !== "object") return false;
-  const o = obj as Record<string, unknown>;
+function isValidPlan(item: unknown): item is LeadMomentumPlan {
+  if (!item || typeof item !== "object") return false;
+  const cand = item as Record<string, unknown>;
   return (
-    typeof o.planId === "string" &&
-    typeof o.leadId === "string" &&
-    Array.isArray(o.steps)
+    typeof cand.leadId === "string" &&
+    typeof cand.planTitle === "string" &&
+    typeof cand.version === "number" &&
+    Array.isArray(cand.steps)
   );
 }
 
 // ---------------------------------------------------------------------------
-// Public API — Leads
+// Public API
 // ---------------------------------------------------------------------------
 
 /**
- * Load all leads from localStorage.
- * Returns the seed set on first visit or if storage is unavailable.
+ * Load leads from localStorage. If no leads are stored, initialises
+ * storage with the synthetic seed leads and returns them.
  */
 export function loadLeads(): Lead[] {
   if (!isLocalStorageAvailable()) {
@@ -74,7 +92,7 @@ export function loadLeads(): Lead[] {
   }
 
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
     if (!raw) {
       // First visit — seed and persist
       saveLeads(SEED_LEADS);
@@ -83,7 +101,7 @@ export function loadLeads(): Lead[] {
 
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) {
-      console.warn("[SignalDesk] Invalid storage format, re-seeding.");
+      console.warn("[LeadMotive] Invalid storage format, re-seeding.");
       saveLeads(SEED_LEADS);
       return [...SEED_LEADS];
     }
@@ -91,14 +109,75 @@ export function loadLeads(): Lead[] {
     // Validate each record, drop corrupted ones
     const valid = parsed.filter(isValidLead);
     if (valid.length === 0) {
-      console.warn("[SignalDesk] No valid leads in storage, re-seeding.");
+      console.warn("[LeadMotive] No valid leads in storage, re-seeding.");
       saveLeads(SEED_LEADS);
       return [...SEED_LEADS];
     }
 
-    return valid;
+    // Safely migrate any legacy assistant copilot messages
+    let hasLegacyAssistantText = false;
+    const migrated = valid.map((l) => {
+      if (!Array.isArray(l.copilotMessages) || l.copilotMessages.length === 0) return l;
+      let changed = false;
+      const updatedMessages = l.copilotMessages.map((m) => {
+        if (m.role !== "assistant") return m;
+        const normalized = normalizeAssistantPriorityText(m.content);
+        const normEvidence = m.supportingEvidence?.map(normalizeAssistantPriorityText);
+        if (normalized !== m.content) changed = true;
+        return {
+          ...m,
+          content: normalized,
+          supportingEvidence: normEvidence,
+        };
+      });
+      if (changed) hasLegacyAssistantText = true;
+      return changed ? { ...l, copilotMessages: updatedMessages } : l;
+    });
+
+    // Ensure priority.band is always consistent with the authoritative 4-factor scoring thresholds
+    let hasMismatchedBands = false;
+    let hasLegacyFactors = false;
+    const aligned = migrated.map((l) => {
+      // Check if lead has legacy 5-factor structure (e.g. factors named budget, message, etc.)
+      const isLegacy5Factor = l.priority?.factors?.some((f) => f.name === "budget" || f.name === "message");
+      if (isLegacy5Factor) {
+        hasLegacyFactors = true;
+        const newPriority = computePriority({
+          budget: l.budget,
+          buyingTimeline: l.buyingTimeline,
+          customerMessage: l.customerMessage,
+          location: l.location,
+          propertyRequirement: l.propertyRequirement,
+        });
+        return {
+          ...l,
+          priority: newPriority,
+        };
+      }
+
+      if (l.priority && typeof l.priority.total === "number") {
+        const correctBand = bandFromScore(l.priority.total);
+        if (l.priority.band !== correctBand) {
+          hasMismatchedBands = true;
+          return {
+            ...l,
+            priority: {
+              ...l.priority,
+              band: correctBand,
+            },
+          };
+        }
+      }
+      return l;
+    });
+
+    if (hasLegacyAssistantText || hasMismatchedBands || hasLegacyFactors) {
+      saveLeads(aligned);
+    }
+
+    return aligned;
   } catch (err) {
-    console.error("[SignalDesk] Failed to parse stored leads:", err);
+    console.error("[LeadMotive] Failed to parse stored leads:", err);
     saveLeads(SEED_LEADS);
     return [...SEED_LEADS];
   }
@@ -109,42 +188,39 @@ export function loadLeads(): Lead[] {
  */
 export function saveLeads(leads: Lead[]): void {
   if (!isLocalStorageAvailable()) return;
-
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(leads));
   } catch (err) {
-    console.error("[SignalDesk] Failed to save leads:", err);
+    console.error("[LeadMotive] Failed to save leads:", err);
   }
 }
 
 /**
- * Save a single lead — adds if new, replaces if existing.
+ * Save or update a single lead. Appends if new, replaces if id matches.
  */
 export function saveLead(lead: Lead): Lead[] {
-  const leads = loadLeads();
-  const index = leads.findIndex((l) => l.id === lead.id);
-  if (index >= 0) {
-    leads[index] = lead;
-  } else {
-    leads.unshift(lead); // Newest first
-  }
-  saveLeads(leads);
-  return leads;
+  const current = loadLeads();
+  const idx = current.findIndex((l) => l.id === lead.id);
+  const updated =
+    idx >= 0
+      ? current.map((l) => (l.id === lead.id ? lead : l))
+      : [lead, ...current];
+  saveLeads(updated);
+  return updated;
 }
 
 /**
- * Delete a lead by ID and clean up associated plan.
+ * Delete a single lead by id.
  */
 export function deleteLead(id: string): Lead[] {
-  const leads = loadLeads().filter((l) => l.id !== id);
-  saveLeads(leads);
-  deletePlanForLead(id);
-  deleteRehearsalSessionForLead(id);
-  return leads;
+  const current = loadLeads();
+  const filtered = current.filter((l) => l.id !== id);
+  saveLeads(filtered);
+  return filtered;
 }
 
 /**
- * Reset to seed data — deliberate demo reset operation.
+ * Reset all localStorage leads and plans back to initial synthetic seed data.
  */
 export function resetToSeedData(): Lead[] {
   saveLeads(SEED_LEADS);
@@ -152,30 +228,22 @@ export function resetToSeedData(): Lead[] {
   if (isLocalStorageAvailable()) {
     try {
       localStorage.removeItem(REHEARSALS_STORAGE_KEY);
-    } catch {}
+      localStorage.removeItem(LEGACY_REHEARSALS_STORAGE_KEY);
+      localStorage.removeItem("leadmotive_gemini_api_key_v1");
+      localStorage.removeItem("signaldesk_gemini_api_key_v1");
+    } catch {
+      // ignore
+    }
   }
   return [...SEED_LEADS];
 }
 
-/**
- * Check if leads have been loaded before (not first visit).
- */
-export function hasExistingData(): boolean {
-  if (!isLocalStorageAvailable()) return false;
-  // Cleanup any legacy key entry if present
-  try {
-    localStorage.removeItem("signaldesk_gemini_api_key_v1");
-  } catch {}
-  return localStorage.getItem(STORAGE_KEY) !== null;
-}
-
 // ---------------------------------------------------------------------------
-// Public API — Lead Momentum Plans
+// Lead Momentum Plans Storage
 // ---------------------------------------------------------------------------
 
 /**
- * Load all momentum plans from localStorage.
- * Defaults to seeded canonical plans on first access.
+ * Load all momentum plans from localStorage. If empty, seeds with canonical plans.
  */
 export function loadPlans(): Record<string, LeadMomentumPlan> {
   if (!isLocalStorageAvailable()) {
@@ -183,7 +251,7 @@ export function loadPlans(): Record<string, LeadMomentumPlan> {
   }
 
   try {
-    const raw = localStorage.getItem(PLANS_STORAGE_KEY);
+    const raw = localStorage.getItem(PLANS_STORAGE_KEY) || localStorage.getItem(LEGACY_PLANS_STORAGE_KEY);
     if (!raw) {
       savePlans(SEEDED_MOMENTUM_PLANS);
       return { ...SEEDED_MOMENTUM_PLANS };
@@ -204,7 +272,7 @@ export function loadPlans(): Record<string, LeadMomentumPlan> {
 
     return validPlans;
   } catch (err) {
-    console.error("[SignalDesk] Failed to parse stored momentum plans:", err);
+    console.error("[LeadMotive] Failed to parse stored momentum plans:", err);
     savePlans(SEEDED_MOMENTUM_PLANS);
     return { ...SEEDED_MOMENTUM_PLANS };
   }
@@ -218,7 +286,7 @@ export function savePlans(plans: Record<string, LeadMomentumPlan>): void {
   try {
     localStorage.setItem(PLANS_STORAGE_KEY, JSON.stringify(plans));
   } catch (err) {
-    console.error("[SignalDesk] Failed to save momentum plans:", err);
+    console.error("[LeadMotive] Failed to save momentum plans:", err);
   }
 }
 
@@ -231,7 +299,7 @@ export function loadPlanForLead(leadId: string): LeadMomentumPlan | null {
 }
 
 /**
- * Save or update a single lead's momentum plan.
+ * Save or update a single lead momentum plan.
  */
 export function savePlan(plan: LeadMomentumPlan): void {
   const plans = loadPlans();
@@ -240,18 +308,7 @@ export function savePlan(plan: LeadMomentumPlan): void {
 }
 
 /**
- * Delete a lead's momentum plan.
- */
-export function deletePlanForLead(leadId: string): void {
-  const plans = loadPlans();
-  if (plans[leadId]) {
-    delete plans[leadId];
-    savePlans(plans);
-  }
-}
-
-/**
- * Update the status of a specific step in a plan.
+ * Update step execution status within a plan.
  */
 export function updateStepStatus(
   leadId: string,
@@ -262,22 +319,24 @@ export function updateStepStatus(
   const plan = loadPlanForLead(leadId);
   if (!plan) return null;
 
-  const now = new Date().toISOString();
+  const nowIso = new Date().toISOString();
+
   const updatedSteps = plan.steps.map((step) => {
     if (step.id !== stepId) return step;
+
+    const isNowCompleted = status === "completed";
     return {
       ...step,
       status,
-      blockedReason: status === "blocked" ? blockedReason || "Blocked by external dependency" : undefined,
-      completedAt: status === "completed" ? now : step.completedAt,
-      statusUpdatedAt: now,
+      completedAt: isNowCompleted ? nowIso : undefined,
+      blockedReason: status === "blocked" ? blockedReason : undefined,
     };
   });
 
   const updatedPlan: LeadMomentumPlan = {
     ...plan,
     steps: updatedSteps,
-    updatedAt: now,
+    updatedAt: nowIso,
   };
 
   savePlan(updatedPlan);
@@ -285,7 +344,7 @@ export function updateStepStatus(
 }
 
 // ---------------------------------------------------------------------------
-// Public API — Objection Rehearsal Sessions
+// Objection Rehearsal Sessions Storage
 // ---------------------------------------------------------------------------
 
 /**
@@ -294,12 +353,12 @@ export function updateStepStatus(
 export function loadRehearsalSessions(): Record<string, RehearsalSession> {
   if (!isLocalStorageAvailable()) return {};
   try {
-    const raw = localStorage.getItem(REHEARSALS_STORAGE_KEY);
+    const raw = localStorage.getItem(REHEARSALS_STORAGE_KEY) || localStorage.getItem(LEGACY_REHEARSALS_STORAGE_KEY);
     if (!raw) return {};
     const parsed = JSON.parse(raw);
     return parsed && typeof parsed === "object" ? parsed : {};
   } catch (err) {
-    console.error("[SignalDesk] Failed to parse rehearsal sessions:", err);
+    console.error("[LeadMotive] Failed to parse rehearsal sessions:", err);
     return {};
   }
 }
@@ -322,7 +381,7 @@ export function saveRehearsalSession(session: RehearsalSession): void {
     sessions[session.leadId] = session;
     localStorage.setItem(REHEARSALS_STORAGE_KEY, JSON.stringify(sessions));
   } catch (err) {
-    console.error("[SignalDesk] Failed to save rehearsal session:", err);
+    console.error("[LeadMotive] Failed to save rehearsal session:", err);
   }
 }
 
@@ -338,7 +397,6 @@ export function deleteRehearsalSessionForLead(leadId: string): void {
       localStorage.setItem(REHEARSALS_STORAGE_KEY, JSON.stringify(sessions));
     }
   } catch (err) {
-    console.error("[SignalDesk] Failed to delete rehearsal session:", err);
+    console.error("[LeadMotive] Failed to delete rehearsal session:", err);
   }
 }
-

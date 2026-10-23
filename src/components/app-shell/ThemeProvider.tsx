@@ -1,29 +1,30 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState, useCallback } from "react";
-import { Sun, Moon, Monitor } from "lucide-react";
+import { Sun, Moon } from "lucide-react";
 
 // ---------------------------------------------------------------------------
-// Types
+// Types — Strict Dual Theme (Day / Night)
 // ---------------------------------------------------------------------------
-type ThemePreference = "light" | "dark" | "system";
-type ResolvedTheme = "light" | "dark";
+export type ThemeMode = "light" | "dark";
 
 interface ThemeContextValue {
-  preference: ThemePreference;
-  resolved: ResolvedTheme;
-  setPreference: (pref: ThemePreference) => void;
+  theme: ThemeMode;
+  resolved: ThemeMode;
+  toggleTheme: () => void;
+  setTheme: (theme: ThemeMode) => void;
 }
 
-const STORAGE_KEY = "signaldesk-theme";
+const STORAGE_KEY = "leadmotive-theme";
 
 // ---------------------------------------------------------------------------
 // Context
 // ---------------------------------------------------------------------------
 const ThemeContext = createContext<ThemeContextValue>({
-  preference: "system",
+  theme: "light",
   resolved: "light",
-  setPreference: () => {},
+  toggleTheme: () => {},
+  setTheme: () => {},
 });
 
 export function useTheme() {
@@ -31,107 +32,85 @@ export function useTheme() {
 }
 
 // ---------------------------------------------------------------------------
-// Inline script to prevent FOUC — runs before React hydrates
+// Inline script to prevent FOUC — runs before React hydrates (defaults to Day/light)
 // ---------------------------------------------------------------------------
 export const themeInitScript = `
 (function(){
   try{
-    var p=localStorage.getItem("${STORAGE_KEY}")||"system";
-    var d=p==="system"
-      ?(matchMedia("(prefers-color-scheme:dark)").matches?"dark":"light")
-      :p;
-    document.documentElement.setAttribute("data-theme",d);
+    var p = localStorage.getItem("${STORAGE_KEY}") || "light";
+    if (p !== "light" && p !== "dark") p = "light";
+    document.documentElement.setAttribute("data-theme", p);
   }catch(e){
-    document.documentElement.setAttribute("data-theme","light");
+    document.documentElement.setAttribute("data-theme", "light");
   }
 })()`;
 
 // ---------------------------------------------------------------------------
-// Resolve helper
-// ---------------------------------------------------------------------------
-function resolve(pref: ThemePreference): ResolvedTheme {
-  if (pref === "system") {
-    if (typeof window !== "undefined") {
-      return window.matchMedia("(prefers-color-scheme: dark)").matches
-        ? "dark"
-        : "light";
-    }
-    return "light";
-  }
-  return pref;
-}
-
-// ---------------------------------------------------------------------------
-// Provider
+// Provider (Defaults to Day Mode; users can toggle to Night Mode)
 // ---------------------------------------------------------------------------
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [preference, setPreferenceState] = useState<ThemePreference>("system");
-  const [resolved, setResolved] = useState<ResolvedTheme>("light");
+  const [theme, setThemeState] = useState<ThemeMode>("light");
 
-  // Read stored preference on mount
   useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY) as ThemePreference | null;
-    const pref = stored && ["light", "dark", "system"].includes(stored) ? stored : "system";
-    setPreferenceState(pref);
-    const r = resolve(pref);
-    setResolved(r);
-    document.documentElement.setAttribute("data-theme", r);
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY) as ThemeMode | null;
+      const initial: ThemeMode = stored === "light" || stored === "dark" ? stored : "light";
+      setThemeState(initial);
+      document.documentElement.setAttribute("data-theme", initial);
+    } catch {
+      document.documentElement.setAttribute("data-theme", "light");
+    }
   }, []);
 
-  // Listen for system theme changes when preference is "system"
-  useEffect(() => {
-    if (preference !== "system") return;
-    const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    const handler = (e: MediaQueryListEvent) => {
-      const r = e.matches ? "dark" : "light";
-      setResolved(r);
-      document.documentElement.setAttribute("data-theme", r);
-    };
-    mq.addEventListener("change", handler);
-    return () => mq.removeEventListener("change", handler);
-  }, [preference]);
-
-  const setPreference = useCallback((pref: ThemePreference) => {
-    setPreferenceState(pref);
-    localStorage.setItem(STORAGE_KEY, pref);
-    const r = resolve(pref);
-    setResolved(r);
-    document.documentElement.setAttribute("data-theme", r);
+  const setTheme = useCallback((newTheme: ThemeMode) => {
+    setThemeState(newTheme);
+    try {
+      localStorage.setItem(STORAGE_KEY, newTheme);
+    } catch {
+      // storage unavailable
+    }
+    document.documentElement.setAttribute("data-theme", newTheme);
   }, []);
+
+  const toggleTheme = useCallback(() => {
+    setTheme(theme === "dark" ? "light" : "dark");
+  }, [theme, setTheme]);
 
   return (
-    <ThemeContext.Provider value={{ preference, resolved, setPreference }}>
+    <ThemeContext.Provider value={{ theme, resolved: theme, toggleTheme, setTheme }}>
       {children}
     </ThemeContext.Provider>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Theme Toggle Button
+// Theme Toggle Button (Day / Night only)
 // ---------------------------------------------------------------------------
 export function ThemeToggle({ compact = false }: { compact?: boolean }) {
-  const { preference, setPreference } = useTheme();
-
-  const cycle = () => {
-    const next: ThemePreference =
-      preference === "light" ? "dark" : preference === "dark" ? "system" : "light";
-    setPreference(next);
-  };
-
-  const Icon = preference === "light" ? Sun : preference === "dark" ? Moon : Monitor;
-  const label =
-    preference === "light" ? "Light" : preference === "dark" ? "Dark" : "System";
+  const { theme, toggleTheme } = useTheme();
+  const isDark = theme === "dark";
 
   return (
     <button
-      onClick={cycle}
-      className={`flex items-center justify-center rounded-md transition-colors duration-fast
-        text-muted hover:text-ink hover:bg-raised
-        ${compact ? "w-9 h-9" : "w-10 h-10"}`}
-      title={`Theme: ${label}. Click to change.`}
-      aria-label={`Current theme: ${label}. Click to change.`}
+      id="theme-toggle-btn"
+      onClick={toggleTheme}
+      type="button"
+      className={`relative inline-flex items-center justify-center rounded-lg transition-all duration-200 cursor-pointer
+        border border-edge hover:border-brand/40 bg-panel hover:bg-raised text-muted hover:text-ink shadow-xs
+        ${compact ? "w-8 h-8" : "h-9 px-3 gap-2"}`}
+      title={isDark ? "Switch to Day Mode (Terracotta Editorial)" : "Switch to Night Mode (Midnight Tech)"}
+      aria-label={isDark ? "Switch to Day Mode" : "Switch to Night Mode"}
     >
-      <Icon className="w-[18px] h-[18px]" />
+      {isDark ? (
+        <Sun className="w-4 h-4 text-warm transition-transform hover:rotate-45" />
+      ) : (
+        <Moon className="w-4 h-4 text-brand transition-transform hover:-rotate-12" />
+      )}
+      {!compact && (
+        <span className="text-xs font-medium tracking-wide">
+          {isDark ? "Day" : "Night"}
+        </span>
+      )}
     </button>
   );
 }

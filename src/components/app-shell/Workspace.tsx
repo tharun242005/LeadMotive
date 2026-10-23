@@ -20,8 +20,9 @@ import {
   savePlan,
   updateStepStatus,
 } from "@/lib/storage/local-store";
-import { computePriority } from "@/lib/leads/scoring";
-import { NavRail, MobileNav } from "@/components/app-shell/NavRail";
+import { computePriority, formatPriorityDisplay } from "@/lib/leads/scoring";
+import { ArrowLeft, Bot, Target } from "lucide-react";
+import { NavRail, MobileNav, type WorkspaceView } from "@/components/app-shell/NavRail";
 import { LeadQueue } from "@/components/leads/LeadQueue";
 import { LeadDetail, EmptyWorkspace } from "@/components/analysis/LeadDetail";
 import { LeadIntakeForm } from "@/components/leads/LeadIntakeForm";
@@ -36,7 +37,6 @@ import { MomentumWorkspace } from "@/components/momentum/MomentumWorkspace";
 type SortOption = "priority" | "newest" | "timeline";
 type ActivePanel = "none" | "copilot" | "rehearsal";
 type MobileView = "queue" | "detail";
-type WorkspaceView = "leads" | "momentum";
 
 const TIMELINE_ORDER: Record<string, number> = {
   immediate: 0,
@@ -65,19 +65,67 @@ export function Workspace() {
   const [mobileView, setMobileView] = useState<MobileView>("queue");
   const [hydrated, setHydrated] = useState(false);
 
-  // Load from localStorage on mount
+  // Load from localStorage on mount & handle browser refresh / URL parameters
   useEffect(() => {
-    const loadedLeads = loadLeads();
+    const rawLeads = loadLeads();
     const loadedPlans = loadPlans();
-    setLeads(loadedLeads);
+
+    // Sanitize leads on fresh load / browser reload:
+    // - Clear transient AI Coach conversation state & in-progress practice sessions
+    // - Reset any stale analyzing status to complete/idle
+    // - Keep all persistent business data (leads, scoring, analyses, momentum plans) intact
+    const sanitizedLeads = rawLeads.map((l) => ({
+      ...l,
+      copilotMessages: [],
+      rehearsalMessages: [],
+      rehearsalSession: undefined,
+      analysisStatus:
+        l.analysisStatus === "analyzing"
+          ? ((l.analysis ? "complete" : "idle") as Lead["analysisStatus"])
+          : l.analysisStatus,
+    }));
+
+    setLeads(sanitizedLeads);
     setPlans(loadedPlans);
     setHydrated(true);
-    // Auto-select the highest-priority lead on desktop
-    if (loadedLeads.length > 0 && window.innerWidth >= 768) {
-      const sorted = [...loadedLeads].sort((a, b) => b.priority.total - a.priority.total);
-      setSelectedLeadId(sorted[0].id);
+
+    // Reset navigation to default workspace view and close all overlays on reload
+    setView("leads");
+    setActivePanel("none");
+    setIsIntakeOpen(false);
+    setIsSettingsOpen(false);
+
+    let initialLeadId: string | null = null;
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const leadParam = params.get("lead") || params.get("leadId");
+
+      if (leadParam && sanitizedLeads.some((l) => l.id === leadParam)) {
+        initialLeadId = leadParam;
+        setMobileView("detail");
+      }
+    }
+
+    if (!initialLeadId && sanitizedLeads.length > 0 && window.innerWidth >= 768) {
+      const sorted = [...sanitizedLeads].sort((a, b) => b.priority.total - a.priority.total);
+      initialLeadId = sorted[0].id;
+    }
+
+    if (initialLeadId) {
+      setSelectedLeadId(initialLeadId);
     }
   }, []);
+
+  // Sync selected lead with URL query params if user navigates with ?lead= or ?leadId=
+  useEffect(() => {
+    if (typeof window === "undefined" || !hydrated) return;
+    const params = new URLSearchParams(window.location.search);
+    const targetLeadId = params.get("lead") || params.get("leadId");
+    if (targetLeadId && leads.some((l) => l.id === targetLeadId)) {
+      setSelectedLeadId(targetLeadId);
+      setMobileView("detail");
+    }
+  }, [hydrated, leads]);
 
 
   // Derived: filtered + sorted leads
@@ -123,6 +171,8 @@ export function Workspace() {
   const stats = useMemo(
     () => ({
       hot: leads.filter((l) => l.priority.band === "hot").length,
+      warm: leads.filter((l) => l.priority.band === "warm").length,
+      cold: leads.filter((l) => l.priority.band === "cold").length,
       pending: leads.filter((l) => l.analysisStatus === "pending").length,
       total: leads.length,
     }),
@@ -270,7 +320,6 @@ export function Workspace() {
           ? { ...l, copilotMessages: msgs, updatedAt: new Date().toISOString() }
           : l
       );
-      saveLeads(next);
       return next;
     });
   }, []);
@@ -302,7 +351,6 @@ export function Workspace() {
             }
           : l
       );
-      saveLeads(next);
       return next;
     });
   }, []);
@@ -317,25 +365,209 @@ export function Workspace() {
     );
   }
 
+  // Full-Page AI Sales Coach View
+  if (view === "coach") {
+    const currentLead = selectedLead || leads[0] || null;
+    return (
+      <div className="flex h-screen bg-canvas overflow-hidden">
+        <NavRail
+          activeView={view}
+          onViewChange={(v) => setView(v)}
+          onNewLead={() => { setView("leads"); setIsIntakeOpen(true); }}
+          onResetDemo={handleResetDemo}
+          onOpenSettings={() => setIsSettingsOpen(true)}
+        />
+        <main id="main-content" tabIndex={-1} className="flex-1 flex flex-col overflow-hidden min-w-0">
+          {/* Top Bar with Lead Context & Selector */}
+          <div className="h-14 px-4 sm:px-6 border-b border-edge bg-panel/80 backdrop-blur-xs flex items-center justify-between gap-3 shrink-0">
+            <div className="flex items-center gap-3 min-w-0">
+              <button
+                onClick={() => setView("leads")}
+                className="h-8 px-2.5 rounded-lg border border-edge bg-raised/50 hover:bg-raised text-xs font-medium text-ink flex items-center gap-1.5 transition-colors shrink-0"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Leads Queue</span>
+              </button>
+              <div className="h-4 w-px bg-edge shrink-0" />
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-7 h-7 rounded-lg bg-brand/10 text-brand flex items-center justify-center shrink-0">
+                  <Bot className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <h1 className="text-xs sm:text-sm font-bold text-ink truncate">
+                    AI Sales Coach Studio
+                  </h1>
+                  <p className="text-[10px] text-muted truncate hidden sm:block">
+                    Real-time consultative intelligence & strategic conversation drafting
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Lead Switcher Dropdown */}
+            {leads.length > 0 && currentLead && (
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-[11px] text-muted hidden md:inline">Assisting:</span>
+                <select
+                  value={currentLead.id}
+                  onChange={(e) => setSelectedLeadId(e.target.value)}
+                  aria-label="Select lead for AI Coach"
+                  className="text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-edge bg-raised text-ink cursor-pointer hover:border-brand/50 transition-colors focus:outline-hidden focus:ring-1 focus:ring-brand max-w-[180px] sm:max-w-[240px] truncate"
+                >
+                  {leads.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name} — {formatPriorityDisplay(l.priority.band, l.priority.total)} ({l.location})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+
+          {/* Full-Page Studio Content Container */}
+          <div className="flex-1 overflow-hidden p-3 sm:p-6 flex flex-col items-center">
+            {currentLead ? (
+              <div className="w-full max-w-4xl h-full flex flex-col bg-panel rounded-2xl border border-edge shadow-md overflow-hidden">
+                <CopilotPanel
+                  key={`full-copilot-${currentLead.id}`}
+                  lead={currentLead}
+                  isFullPage
+                  onUpdateMessages={(msgs) => handleUpdateCopilotMessages(currentLead.id, msgs)}
+                />
+              </div>
+            ) : (
+              <div className="m-auto text-center p-8 bg-panel rounded-2xl border border-edge">
+                <Bot className="w-10 h-10 text-muted mx-auto mb-2" />
+                <h2 className="text-sm font-semibold text-ink">No lead selected</h2>
+                <p className="text-xs text-muted mt-1">Please select a lead to begin coaching.</p>
+              </div>
+            )}
+          </div>
+        </main>
+
+        {isSettingsOpen && (
+          <AISettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+        )}
+        <MobileNav
+          activeView={view}
+          onViewChange={(v) => setView(v)}
+          onNewLead={() => { setView("leads"); setIsIntakeOpen(true); }}
+          onBack={() => setView("leads")}
+          showBack={true}
+        />
+      </div>
+    );
+  }
+
+  // Full-Page Objection & Buyer Rehearsal View
+  if (view === "rehearsal") {
+    const currentLead = selectedLead || leads[0] || null;
+    return (
+      <div className="flex h-screen bg-canvas overflow-hidden">
+        <NavRail
+          activeView={view}
+          onViewChange={(v) => setView(v)}
+          onNewLead={() => { setView("leads"); setIsIntakeOpen(true); }}
+          onResetDemo={handleResetDemo}
+          onOpenSettings={() => setIsSettingsOpen(true)}
+        />
+        <main id="main-content" tabIndex={-1} className="flex-1 flex flex-col overflow-hidden min-w-0">
+          {/* Top Bar with Lead Context & Selector */}
+          <div className="h-14 px-4 sm:px-6 border-b border-edge bg-panel/80 backdrop-blur-xs flex items-center justify-between gap-3 shrink-0">
+            <div className="flex items-center gap-3 min-w-0">
+              <button
+                onClick={() => setView("leads")}
+                className="h-8 px-2.5 rounded-lg border border-edge bg-raised/50 hover:bg-raised text-xs font-medium text-ink flex items-center gap-1.5 transition-colors shrink-0"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Leads Queue</span>
+              </button>
+              <div className="h-4 w-px bg-edge shrink-0" />
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-7 h-7 rounded-lg bg-brand/10 text-brand flex items-center justify-center shrink-0">
+                  <Target className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <h1 className="text-xs sm:text-sm font-bold text-ink truncate">
+                    Objection & Buyer Rehearsal Studio
+                  </h1>
+                  <p className="text-[10px] text-muted truncate hidden sm:block">
+                    Interactive roleplay with simulated buyer personas & coaching rubric debriefs
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Lead Switcher Dropdown */}
+            {leads.length > 0 && currentLead && (
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-[11px] text-muted hidden md:inline">Simulating:</span>
+                <select
+                  value={currentLead.id}
+                  onChange={(e) => setSelectedLeadId(e.target.value)}
+                  aria-label="Select lead for Rehearsal"
+                  className="text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-edge bg-raised text-ink cursor-pointer hover:border-brand/50 transition-colors focus:outline-hidden focus:ring-1 focus:ring-brand max-w-[180px] sm:max-w-[240px] truncate"
+                >
+                  {leads.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name} — {formatPriorityDisplay(l.priority.band, l.priority.total)} ({l.location})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+
+          {/* Full-Page Studio Content Container */}
+          <div className="flex-1 overflow-hidden p-3 sm:p-6 flex flex-col items-center">
+            {currentLead ? (
+              <div className="w-full max-w-4xl h-full flex flex-col bg-panel rounded-2xl border border-edge shadow-md overflow-hidden">
+                <RehearsalPanel
+                  key={`full-rehearsal-${currentLead.id}-${activeRehearsalObjection?.label || "default"}`}
+                  lead={currentLead}
+                  initialObjection={activeRehearsalObjection}
+                  isFullPage
+                  onUpdateSession={(session) => handleUpdateRehearsalSession(currentLead.id, session)}
+                />
+              </div>
+            ) : (
+              <div className="m-auto text-center p-8 bg-panel rounded-2xl border border-edge">
+                <Target className="w-10 h-10 text-muted mx-auto mb-2" />
+                <h2 className="text-sm font-semibold text-ink">No lead selected</h2>
+                <p className="text-xs text-muted mt-1">Please select a lead to begin rehearsal.</p>
+              </div>
+            )}
+          </div>
+        </main>
+
+        {isSettingsOpen && (
+          <AISettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+        )}
+        <MobileNav
+          activeView={view}
+          onViewChange={(v) => setView(v)}
+          onNewLead={() => { setView("leads"); setIsIntakeOpen(true); }}
+          onBack={() => setView("leads")}
+          showBack={true}
+        />
+      </div>
+    );
+  }
+
   // Momentum Workspace View
   if (view === "momentum") {
     return (
       <div className="flex h-screen bg-canvas overflow-hidden">
         <NavRail
           activeView={view}
-          onMomentumPlan={() => setView((v) => (v === "momentum" ? "leads" : "momentum"))}
+          onViewChange={(v) => setView(v)}
           onNewLead={() => { setView("leads"); setIsIntakeOpen(true); }}
           onResetDemo={handleResetDemo}
           onOpenSettings={() => setIsSettingsOpen(true)}
-          onRehearsal={
-            selectedLead
-              ? () => { setActivePanel("rehearsal"); setView("leads"); }
-              : undefined
-          }
         />
         <div className="flex-1 overflow-hidden min-w-0">
           <MomentumWorkspace
-            leads={filteredLeads.length > 0 ? filteredLeads : leads}
+            leads={leads}
             selectedLeadId={selectedLeadId || (leads[0]?.id ?? "")}
             onSelectLead={(id) => setSelectedLeadId(id)}
             onBackToLead={() => setView("leads")}
@@ -344,13 +576,11 @@ export function Workspace() {
             onStatusChange={handleStepStatusChange}
             onOpenCoach={(lead) => {
               setSelectedLeadId(lead.id);
-              setActivePanel("copilot");
-              setView("leads");
+              setView("coach");
             }}
             onOpenRehearsal={(lead) => {
               setSelectedLeadId(lead.id);
-              setActivePanel("rehearsal");
-              setView("leads");
+              setView("rehearsal");
             }}
           />
         </div>
@@ -358,10 +588,11 @@ export function Workspace() {
           <AISettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
         )}
         <MobileNav
+          activeView={view}
+          onViewChange={(v) => setView(v)}
           onNewLead={() => { setView("leads"); setIsIntakeOpen(true); }}
           onBack={() => setView("leads")}
           showBack={true}
-          onMomentumPlan={() => setView((v) => (v === "momentum" ? "leads" : "momentum"))}
         />
       </div>
     );
@@ -372,20 +603,15 @@ export function Workspace() {
       {/* Desktop Nav Rail */}
       <NavRail
         activeView={view}
-        onMomentumPlan={() => setView("momentum")}
+        onViewChange={(v) => setView(v)}
         onNewLead={() => setIsIntakeOpen(true)}
         onResetDemo={handleResetDemo}
         onOpenSettings={() => setIsSettingsOpen(true)}
-        onRehearsal={
-          selectedLead
-            ? () => setActivePanel((p) => (p === "rehearsal" ? "none" : "rehearsal"))
-            : undefined
-        }
       />
 
       {/* Lead Queue */}
       <div
-        className={`w-full md:w-80 lg:w-[340px] shrink-0 border-r border-edge bg-panel flex flex-col
+        className={`w-full md:w-80 lg:w-84 xl:w-88 shrink-0 border-r border-edge bg-panel flex flex-col
           ${mobileView === "detail" ? "hidden md:flex" : "flex"}`}
       >
         <LeadQueue
@@ -404,7 +630,9 @@ export function Workspace() {
       </div>
 
       {/* Main workspace + optional side panel */}
-      <div
+      <main
+        id="main-content"
+        tabIndex={-1}
         className={`flex-1 flex overflow-hidden min-w-0
           ${mobileView === "queue" ? "hidden md:flex" : "flex"}`}
       >
@@ -430,9 +658,9 @@ export function Workspace() {
         </div>
 
 
-        {/* Desktop side panel */}
+        {/* Desktop side panel with animated border sweep and restrained entrance */}
         {activePanel === "copilot" && selectedLead && (
-          <div className="w-[380px] xl:w-[420px] shrink-0 border-l border-edge bg-panel hidden lg:block anim-slide-r">
+          <div className="w-[360px] xl:w-[410px] shrink-0 border-l-2 border-l-brand/50 dark:border-l-accent/50 border-y-0 border-r-0 bg-panel hidden lg:block anim-drawer-open shadow-lg">
             <CopilotPanel
               key={`copilot-${selectedLead.id}`}
               lead={selectedLead}
@@ -442,7 +670,7 @@ export function Workspace() {
           </div>
         )}
         {activePanel === "rehearsal" && selectedLead && (
-          <div className="w-[400px] xl:w-[460px] 2xl:w-[500px] shrink-0 border-l border-edge bg-panel hidden lg:block anim-slide-r">
+          <div className="w-[380px] xl:w-[440px] 2xl:w-[480px] shrink-0 border-l-2 border-l-brand/50 dark:border-l-accent/50 border-y-0 border-r-0 bg-panel hidden lg:block anim-drawer-open shadow-lg">
             <RehearsalPanel
               key={`rehearsal-${selectedLead.id}-${activeRehearsalObjection?.label || "default"}`}
               lead={selectedLead}
@@ -452,7 +680,7 @@ export function Workspace() {
             />
           </div>
         )}
-      </div>
+      </main>
 
       {/* Mobile overlay for panels */}
       {activePanel !== "none" && selectedLead && (
@@ -493,6 +721,8 @@ export function Workspace() {
 
       {/* Mobile nav */}
       <MobileNav
+        activeView={view}
+        onViewChange={(v) => setView(v)}
         onNewLead={() => setIsIntakeOpen(true)}
         onBack={() => { setMobileView("queue"); setActivePanel("none"); }}
         showBack={mobileView === "detail"}

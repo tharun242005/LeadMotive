@@ -1,5 +1,5 @@
 // ============================================================================
-// SignalDesk — AI Response Validation Schemas
+// LeadMotive — AI Response Validation Schemas
 // ============================================================================
 //
 // Runtime validation for AI model responses before they reach the UI.
@@ -7,7 +7,7 @@
 // ============================================================================
 
 import type { AnalyzeLeadResponse, RehearsalResponse, PlanResponse, ChatResponse, RehearsalMode } from "@/types/ai";
-import type { CustomerIntent, MomentumPlanStep, StepCategory, StepStatus, RubricDimension, RehearsalFeedback } from "@/types/lead";
+import type { CustomerIntent, MomentumPlanStep, StepCategory, StepStatus, RubricDimension, RehearsalFeedback, RehearsalScenarioType } from "@/types/lead";
 
 
 const VALID_INTENTS: CustomerIntent[] = [
@@ -35,9 +35,24 @@ export function validateAnalysisResponse(
 
   const r = raw as Record<string, unknown>;
 
-  // Required string fields
-  const summary = expectString(r, "summary");
-  const suggestedResponse = expectString(r, "suggestedResponse");
+  // Required string fields (with resilient alias support)
+  const rawSummary = r.summary || r.overview || r.executiveSummary;
+  const summary =
+    typeof rawSummary === "string" && rawSummary.trim().length > 0
+      ? rawSummary.trim()
+      : expectString(r, "summary");
+
+  const rawSuggestedResponse =
+    r.suggestedResponse ||
+    r.suggested_response ||
+    r.suggestedReply ||
+    r.suggested_reply ||
+    r.draftResponse ||
+    r.response;
+  const suggestedResponse =
+    typeof rawSuggestedResponse === "string" && rawSuggestedResponse.trim().length > 0
+      ? rawSuggestedResponse.trim()
+      : expectString(r, "suggestedResponse");
 
   // Normalized source message for verbatim quotation verification
   const sourceText = (sourceLead?.customerMessage || "").toLowerCase();
@@ -151,10 +166,57 @@ export function validateAnalysisResponse(
         })
     : [];
 
+  // ── Factual Grounding & Sanitization for Unverified Claims ──
+  let sanitizedSummary = summary;
+  const ungroundedFestivalInSummary = /\b(diwali|deepavali|dussehra|navratri)\b/i.test(summary) && !/\b(diwali|deepavali|dussehra|navratri)\b/i.test(sourceText);
+  if (ungroundedFestivalInSummary) {
+    sanitizedSummary = sanitizedSummary
+      .replace(/\b(?:before|by|during|for)\s+(?:diwali|deepavali|dussehra|navratri)\b/gi, "by their target possession date")
+      .replace(/\b(?:diwali|deepavali|dussehra|navratri)\b/gi, "target timeline");
+  }
+
+  // Sanitize affirmative unverified inventory claims in suggestedResponse to conditional phrasing
+  let sanitizedSuggestedResponse = suggestedResponse;
+  if (/\b(diwali|deepavali|dussehra|navratri)\b/i.test(sanitizedSuggestedResponse) && !/\b(diwali|deepavali|dussehra|navratri)\b/i.test(sourceText)) {
+    sanitizedSuggestedResponse = sanitizedSuggestedResponse
+      .replace(/\b(?:before|by|during|for)\s+(?:diwali|deepavali|dussehra|navratri)\b/gi, "by your target possession timeline")
+      .replace(/\b(?:diwali|deepavali|dussehra|navratri)\b/gi, "target timeline");
+  }
+
+  // Convert unverified affirmative inventory claims into conditional verification wording
+  sanitizedSuggestedResponse = sanitizedSuggestedResponse.replace(
+    /\b(?:we have|i have)\s+(?:available\s+)?(?:[\w\s-]{0,30})?(?:ready-to-move(?:-in)?|suitable|\d+\s*bhk|matching)\s+(?:units|properties|apartments|flats|options|residences)\s+available\b/gi,
+    "I would be glad to check current availability for suitable options"
+  );
+  sanitizedSuggestedResponse = sanitizedSuggestedResponse.replace(
+    /\b(?:we have|i have)\s+ready-to-move(?:-in)?\s+[^.]+?\s*available\b/gi,
+    "I would be glad to check current availability for ready-to-move-in options"
+  );
+  sanitizedSuggestedResponse = sanitizedSuggestedResponse.replace(
+    /\b(?:we have|i have)\s+(?:suitable\s+)?(?:properties|units|options|apartments|flats)\s+available\b/gi,
+    "I would be glad to check current availability for suitable options"
+  );
+  sanitizedSuggestedResponse = sanitizedSuggestedResponse.replace(
+    /\b(?:we have|i have)\s+\d+\s+handpicked\s+verified\s+projects\s+that\s+align\b/gi,
+    "I would be glad to check verified projects that align"
+  );
+  sanitizedSuggestedResponse = sanitizedSuggestedResponse.replace(
+    /\b(?:we have|i have)\s+(?:a\s+)?suitable\s+(?:\d+\s*bhk|property|unit|flat|apartment)\s+available\b/gi,
+    "I would be glad to check availability for suitable options"
+  );
+
   // Missing Information
   const missingInformation = Array.isArray(r.missingInformation)
     ? r.missingInformation.map((m) => String(m).trim()).filter(Boolean)
     : [];
+
+  // Ensure unverified property availability is documented as a question to verify
+  const hasInventoryMissingInfo = missingInformation.some((m) =>
+    /inventory|availability|handover|possession/i.test(m)
+  );
+  if (!hasInventoryMissingInfo) {
+    missingInformation.unshift("Developer unit availability and confirmed handover timeline require verification with the project team.");
+  }
 
   // Grounded Evidence Quotes validation
   const rawEvidence = Array.isArray(r.evidence) ? r.evidence : [];
@@ -173,8 +235,18 @@ export function validateAnalysisResponse(
     ? r.uncertainties.map((u) => String(u).trim()).filter(Boolean)
     : [];
 
+  const hasInventoryUncertainty = uncertainties.some((u) =>
+    /inventory|availability|developer/i.test(u)
+  );
+  if (!hasInventoryUncertainty) {
+    uncertainties.push("Matching property inventory is subject to real-time verification with the developer site office.");
+  }
+  if (ungroundedFestivalInSummary) {
+    uncertainties.push("Corrected ungrounded festival/holiday reference not established by customer message.");
+  }
+
   return {
-    summary,
+    summary: sanitizedSummary,
     intent,
     customerIntent,
     intentConfidence,
@@ -183,7 +255,7 @@ export function validateAnalysisResponse(
     objections,
     recommendedAction,
     recommendedNextAction,
-    suggestedResponse,
+    suggestedResponse: sanitizedSuggestedResponse,
     timeline,
     missingInformation,
     evidence,
@@ -196,7 +268,8 @@ export function validateAnalysisResponse(
  */
 export function validateRehearsalResponse(
   raw: unknown,
-  expectedMode: RehearsalMode = "roleplay"
+  expectedMode: RehearsalMode = "roleplay",
+  expectedScenarioType?: RehearsalScenarioType
 ): Omit<RehearsalResponse, "meta"> {
   if (!raw || typeof raw !== "object") {
     throw new Error("Rehearsal response is not an object");
@@ -312,8 +385,15 @@ export function validateRehearsalResponse(
     };
   }
 
+  const scenarioType: RehearsalScenarioType | undefined =
+    expectedScenarioType ||
+    (typeof r.scenarioType === "string" && (r.scenarioType === "immediate_buyer" || r.scenarioType === "documented_concern")
+      ? (r.scenarioType as RehearsalScenarioType)
+      : undefined);
+
   return {
     mode: expectedMode,
+    scenarioType,
     customerReply,
     feedback,
   };

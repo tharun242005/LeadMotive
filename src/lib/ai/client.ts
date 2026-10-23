@@ -1,13 +1,13 @@
 // ============================================================================
-// SignalDesk — Server-Side AI Client (Google Gemini & Heuristic Engine)
+// LeadMotive — Server-Side AI Client (Google Gemini & Heuristic Engine)
 // ============================================================================
 //
 // Centralized server-side AI execution.
 // - GEMINI_API_KEY: server-side secret (never exposed to browser)
-// - GEMINI_MODEL: server-side model configuration with default "gemini-3.8-flash"
+// - GEMINI_MODEL: server-side model configuration with default "gemini-3.5-flash-lite"
 //
 // Unambiguous telemetry:
-// - Live mode: provider="google-gemini", mode="live", fallbackUsed=false, model="gemini-3.8-flash"
+// - Live mode: provider="google-gemini", mode="live", fallbackUsed=false, model="gemini-3.5-flash-lite"
 // - Fallback mode: provider="offline-heuristic", mode="fallback", fallbackUsed=true, model=null
 // ============================================================================
 
@@ -25,9 +25,9 @@ import type {
 import type {
   ExtractedObjection,
   MomentumPlanStep,
+  RehearsalScenarioType,
 } from "@/types/lead";
 
-import { GoogleGenAI } from "@google/genai";
 import {
   buildAnalysisPrompt,
   buildChatPrompt,
@@ -46,19 +46,20 @@ import {
   validateChatResponse,
 } from "./schemas";
 import { SEEDED_MOMENTUM_PLANS } from "@/lib/leads/momentum-fixtures";
+import {
+  DEFAULT_GEMINI_MODEL,
+  DEFAULT_GROQ_MODEL,
+  getCanonicalAIConfig,
+  executeAIWithCascade,
+  getPassiveDiagnostics,
+  runActiveDiagnostics,
+  callGeminiRaw,
+  callGroqRaw,
+} from "./provider";
 
-export const DEFAULT_GEMINI_MODEL = "gemini-3.8-flash";
+export type { ServerAIConfig } from "./provider";
 
-let genAIClient: GoogleGenAI | null = null;
-let currentApiKey: string | null = null;
-
-function getGenAIClient(apiKey: string): GoogleGenAI {
-  if (!genAIClient || currentApiKey !== apiKey) {
-    genAIClient = new GoogleGenAI({ apiKey });
-    currentApiKey = apiKey;
-  }
-  return genAIClient;
-}
+export { DEFAULT_GEMINI_MODEL, DEFAULT_GROQ_MODEL, callGeminiRaw, callGroqRaw };
 
 export interface AIClientConfig {
   apiKey?: string;
@@ -67,101 +68,50 @@ export interface AIClientConfig {
 }
 
 /**
- * Read server-side AI configuration.
- * Strictly reads from server environment variables — no browser exposure.
+ * Read server-side AI configuration (backwards-compatible helper).
  */
 export function getAIConfig(): AIClientConfig {
-  const apiKey =
-    process.env.GEMINI_API_KEY?.trim() ||
-    process.env.GOOGLE_GEMINI_API_KEY?.trim();
-
-  const model = process.env.GEMINI_MODEL?.trim() || DEFAULT_GEMINI_MODEL;
-
-  const isConfigured = Boolean(
-    apiKey && apiKey.length > 5 && apiKey !== "your_api_key_here"
-  );
-
+  const canonical = getCanonicalAIConfig();
   return {
-    apiKey: isConfigured ? apiKey : undefined,
-    model,
-    isConfigured,
+    apiKey: canonical.geminiApiKey,
+    model: canonical.geminiModel,
+    isConfigured: canonical.isGeminiConfigured,
   };
 }
 
-/**
- * Call Google Gemini using official @google/genai SDK.
- * Includes JSON mode and automatic markdown code fence stripping.
- */
-async function callGeminiRaw(
-  prompt: string,
-  options?: {
-    jsonMode?: boolean;
-    temperature?: number;
-    maxTokens?: number;
-  }
-): Promise<{ text: string; model: string }> {
-  const config = getAIConfig();
-  if (!config.isConfigured || !config.apiKey) {
-    throw new Error("GEMINI_API_KEY is not configured on the server");
-  }
-
-  const model = config.model;
-
-  try {
-    const ai = getGenAIClient(config.apiKey);
-    const response = await ai.models.generateContent({
-      model,
-      contents: prompt,
-      config: {
-        temperature: options?.temperature ?? 0.2,
-        ...(options?.maxTokens ? { maxOutputTokens: options.maxTokens } : {}),
-        ...(options?.jsonMode ? { responseMimeType: "application/json" } : {}),
-      },
-    });
-
-    const rawText = response.text;
-    if (!rawText) {
-      throw new Error("Empty content returned by Gemini API");
-    }
-
-    // Strip markdown code fences if wrapped
-    const cleaned = rawText
-      .replace(/^```json\s*/i, "")
-      .replace(/^```\s*/i, "")
-      .replace(/\s*```$/, "")
-      .trim();
-
-    return { text: cleaned, model };
-  } catch (sdkErr: unknown) {
-    const msg = sdkErr instanceof Error ? sdkErr.message : String(sdkErr);
-    throw new Error(`Google GenAI SDK error: ${msg}`);
-  }
-}
-
 // ---------------------------------------------------------------------------
-// High-Level Service Methods
+// High-Level Service Methods with Cascade & Resilience
 // ---------------------------------------------------------------------------
 
 /**
- * Analyze lead with live Gemini, or fall back explicitly to heuristic engine.
+ * Analyze lead with primary Gemini, secondary Groq fallback, or heuristic engine.
  */
 export async function performLeadAnalysis(lead: AnalyzeLeadRequest): Promise<AnalyzeLeadResponse> {
   const start = performance.now();
-  const config = getAIConfig();
+  const prompt = buildAnalysisPrompt(lead);
+  const dedupeKey = `analyze:${lead.name}:${lead.propertyRequirement}:${lead.budget}:${lead.customerMessage.slice(0, 100)}`;
 
-  if (config.isConfigured) {
+  const cascadeRes = await executeAIWithCascade({
+    prompt,
+    jsonMode: true,
+    maxTokens: 1500,
+    temperature: 0.2,
+    dedupeKey,
+  });
+
+  if (cascadeRes.mode === "live" && cascadeRes.text) {
     try {
-      const prompt = buildAnalysisPrompt(lead);
-      const { text, model } = await callGeminiRaw(prompt, { jsonMode: true, maxTokens: 1500 });
-      const parsed = JSON.parse(text);
+      const parsed = JSON.parse(cascadeRes.text);
       const validated = validateAnalysisResponse(parsed, lead);
       const latencyMs = Math.round(performance.now() - start);
 
       const meta: AIMetadata = {
-        provider: "google-gemini",
-        model,
+        provider: cascadeRes.provider,
+        model: cascadeRes.model,
         mode: "live",
         fallbackUsed: false,
+        secondaryUsed: cascadeRes.secondaryUsed,
+        primaryFailureReason: cascadeRes.primaryFailureReason,
         latencyMs,
       };
 
@@ -169,26 +119,12 @@ export async function performLeadAnalysis(lead: AnalyzeLeadRequest): Promise<Ana
         ...validated,
         meta,
       };
-    } catch (err) {
-      console.warn("Live Gemini analysis call failed, falling back to heuristic engine:", err);
-      const latencyMs = Math.round(performance.now() - start);
-      const fallback = generateFallbackAnalysis(lead);
-      const meta: AIMetadata = {
-        provider: "offline-heuristic",
-        model: null,
-        mode: "fallback",
-        fallbackUsed: true,
-        latencyMs,
-        message: err instanceof Error ? err.message : "Live Gemini call failed",
-      };
-      return {
-        ...fallback,
-        meta,
-      };
+    } catch (parseErr) {
+      console.warn("[LeadMotive AI] Live analysis validation failed, falling back to heuristic engine:", parseErr);
     }
   }
 
-  // Unconfigured: use explicit offline heuristic assistance
+  // Fallback mode (either providers unavailable or output validation failed)
   const latencyMs = Math.round(performance.now() - start);
   const fallback = generateFallbackAnalysis(lead);
   const meta: AIMetadata = {
@@ -196,8 +132,12 @@ export async function performLeadAnalysis(lead: AnalyzeLeadRequest): Promise<Ana
     model: null,
     mode: "fallback",
     fallbackUsed: true,
+    secondaryUsed: false,
+    primaryFailureReason: cascadeRes.primaryFailureReason,
     latencyMs,
-    message: "Server GEMINI_API_KEY unconfigured. Showing offline heuristic preview.",
+    message: cascadeRes.primaryFailureReason
+      ? `Primary provider unavailable (${cascadeRes.primaryFailureReason}). Generated via offline Bengaluru heuristic engine.`
+      : "Generated via offline Bengaluru heuristic engine.",
   };
 
   return {
@@ -207,7 +147,7 @@ export async function performLeadAnalysis(lead: AnalyzeLeadRequest): Promise<Ana
 }
 
 /**
- * Contextual sales coach chat with live Gemini or explicit fallback.
+ * Contextual sales coach chat with live cascade or explicit fallback.
  */
 export async function performCopilotChat(
   message: string,
@@ -237,45 +177,38 @@ export async function performCopilotChat(
   history: Array<{ role: "user" | "assistant"; content: string }>
 ): Promise<ChatResponse> {
   const start = performance.now();
-  const config = getAIConfig();
-  // Bound history to last 6 messages to prevent unbounded token usage
   const boundedHistory = (history || []).slice(-6);
+  const prompt = buildChatPrompt(leadContext, message.slice(0, 2000), boundedHistory);
+  const dedupeKey = `chat:${leadContext.name}:${message.slice(0, 100)}`;
 
-  if (config.isConfigured) {
+  const cascadeRes = await executeAIWithCascade({
+    prompt,
+    jsonMode: true,
+    temperature: 0.3,
+    maxTokens: 1000,
+    dedupeKey,
+  });
+
+  if (cascadeRes.mode === "live" && cascadeRes.text) {
     try {
-      const prompt = buildChatPrompt(leadContext, message.slice(0, 2000), boundedHistory);
-      const { text, model } = await callGeminiRaw(prompt, { jsonMode: true, temperature: 0.3 });
-      const validated = validateChatResponse(text);
+      const validated = validateChatResponse(cascadeRes.text);
       const latencyMs = Math.round(performance.now() - start);
 
       return {
         ...validated,
         reply: validated.answer,
         meta: {
-          provider: "google-gemini",
-          model,
+          provider: cascadeRes.provider,
+          model: cascadeRes.model,
           mode: "live",
           fallbackUsed: false,
+          secondaryUsed: cascadeRes.secondaryUsed,
+          primaryFailureReason: cascadeRes.primaryFailureReason,
           latencyMs,
         },
       };
-    } catch (err) {
-      console.warn("Live Gemini chat failed, using fallback:", err);
-      const latencyMs = Math.round(performance.now() - start);
-      const fallback = generateFallbackChat(message, leadContext);
-
-      return {
-        ...fallback,
-        reply: fallback.answer,
-        meta: {
-          provider: "offline-heuristic",
-          model: null,
-          mode: "fallback",
-          fallbackUsed: true,
-          latencyMs,
-          message: err instanceof Error ? err.message : "Live Gemini call failed",
-        },
-      };
+    } catch (parseErr) {
+      console.warn("[LeadMotive AI] Live chat validation failed, falling back to heuristic:", parseErr);
     }
   }
 
@@ -290,14 +223,18 @@ export async function performCopilotChat(
       model: null,
       mode: "fallback",
       fallbackUsed: true,
+      secondaryUsed: false,
+      primaryFailureReason: cascadeRes.primaryFailureReason,
       latencyMs,
-      message: "Server GEMINI_API_KEY unconfigured. Generated via offline heuristic engine.",
+      message: cascadeRes.primaryFailureReason
+        ? `Primary provider unavailable (${cascadeRes.primaryFailureReason}). Heuristic sales coach active.`
+        : "Generated via offline heuristic engine.",
     },
   };
 }
 
 /**
- * Objection rehearsal roleplay with live Gemini or explicit fallback.
+ * Objection rehearsal roleplay with live cascade or explicit fallback.
  */
 export async function performObjectionRehearsal(
   message: string,
@@ -313,68 +250,61 @@ export async function performObjectionRehearsal(
     analysis?: {
       summary?: string;
       intent?: string;
+      recommendedAction?: { description: string; timeframe: string };
     } | null;
   },
   history: Array<{ role: "salesperson" | "customer"; content: string }>,
   includeFeedback: boolean,
   mode: RehearsalMode = "roleplay",
-  targetObjection?: ExtractedObjection
+  targetObjection?: ExtractedObjection,
+  scenarioType: RehearsalScenarioType = "documented_concern",
+  isHypothetical: boolean = false
 ): Promise<RehearsalResponse> {
   const start = performance.now();
-  const config = getAIConfig();
   const boundedHistory = (history || []).slice(-6);
+  const prompt = buildRehearsalPrompt(
+    leadContext,
+    message.slice(0, 2000),
+    boundedHistory,
+    includeFeedback,
+    mode,
+    targetObjection,
+    scenarioType,
+    isHypothetical
+  );
+  const temperature = mode === "coach" || includeFeedback ? 0.2 : 0.4;
+  const dedupeKey = `rehearsal:${leadContext.name}:${mode}:${message.slice(0, 100)}`;
 
-  if (config.isConfigured) {
+  const cascadeRes = await executeAIWithCascade({
+    prompt,
+    jsonMode: true,
+    temperature,
+    maxTokens: 1200,
+    dedupeKey,
+  });
+
+  if (cascadeRes.mode === "live" && cascadeRes.text) {
     try {
-      const prompt = buildRehearsalPrompt(
-        leadContext,
-        message.slice(0, 2000),
-        boundedHistory,
-        includeFeedback,
-        mode,
-        targetObjection
-      );
-      const temperature = mode === "coach" || includeFeedback ? 0.2 : 0.4;
-      const { text, model } = await callGeminiRaw(prompt, { jsonMode: true, temperature });
-      const parsed = JSON.parse(text);
-      const validated = validateRehearsalResponse(parsed, mode);
+      const parsed = JSON.parse(cascadeRes.text);
+      const validated = validateRehearsalResponse(parsed, mode, scenarioType);
       const latencyMs = Math.round(performance.now() - start);
 
       return {
         ...validated,
         mode,
+        scenarioType,
         meta: {
-          provider: "google-gemini",
-          model,
+          provider: cascadeRes.provider,
+          model: cascadeRes.model,
           mode: "live",
           fallbackUsed: false,
+          secondaryUsed: cascadeRes.secondaryUsed,
+          primaryFailureReason: cascadeRes.primaryFailureReason,
           latencyMs,
         },
       };
-    } catch (err) {
-      console.warn("Live Gemini rehearsal failed, using fallback:", err);
-      const latencyMs = Math.round(performance.now() - start);
-      const fallback = generateFallbackRehearsal(
-        message,
-        leadContext,
-        boundedHistory,
-        includeFeedback,
-        mode,
-        targetObjection
-      );
-
-      return {
-        ...fallback,
-        mode,
-        meta: {
-          provider: "offline-heuristic",
-          model: null,
-          mode: "fallback",
-          fallbackUsed: true,
-          latencyMs,
-          message: err instanceof Error ? err.message : "Live Gemini call failed",
-        },
-      };
+    } catch (parseErr) {
+      console.warn("[LeadMotive AI] Live rehearsal validation failed, falling back to heuristic:", parseErr);
     }
   }
 
@@ -385,67 +315,81 @@ export async function performObjectionRehearsal(
     boundedHistory,
     includeFeedback,
     mode,
-    targetObjection
+    targetObjection,
+    scenarioType,
+    isHypothetical
   );
 
   return {
     ...fallback,
     mode,
+    scenarioType,
     meta: {
       provider: "offline-heuristic",
       model: null,
       mode: "fallback",
       fallbackUsed: true,
+      secondaryUsed: false,
+      primaryFailureReason: cascadeRes.primaryFailureReason,
       latencyMs,
-      message: "Server GEMINI_API_KEY unconfigured. Generated via offline heuristic engine.",
+      message: cascadeRes.primaryFailureReason
+        ? `Primary provider unavailable (${cascadeRes.primaryFailureReason}). Heuristic simulation active.`
+        : "Generated via offline heuristic engine.",
     },
   };
 }
 
 /**
- * Generate or adapt a Lead Momentum Plan with live Gemini or explicit heuristic fallback.
+ * Generate or adapt a Lead Momentum Plan with live cascade or explicit heuristic fallback.
  */
 export async function performLeadPlan(req: PlanRequest): Promise<PlanResponse> {
   const start = performance.now();
-  const config = getAIConfig();
-
   const planId = req.previousPlan?.planId || `plan-${req.lead.id}-${Date.now()}`;
   const planVersion = req.previousPlan ? req.previousPlan.planVersion + 1 : 1;
 
-  if (config.isConfigured) {
-    try {
-      const prompt =
-        req.isAdaptation && req.previousPlan
-          ? buildAdaptPlanPrompt({
-              lead: {
-                id: req.lead.id,
-                name: req.lead.name,
-                location: req.lead.location,
-                propertyRequirement: req.lead.propertyRequirement,
-                budget: req.lead.budget,
-                buyingTimeline: req.lead.buyingTimeline,
-                customerMessage: req.lead.customerMessage,
-              },
-              previousPlan: {
-                planId: req.previousPlan.planId,
-                planVersion: req.previousPlan.planVersion,
-                planTitle: `Momentum Plan v${req.previousPlan.planVersion}`,
-                objective: req.objective,
-                completedSteps: req.previousPlan.completedSteps,
-                remainingSteps: req.previousPlan.remainingSteps,
-                adaptationReason: req.previousPlan.adaptationReason,
-              },
-              additionalInstructions: req.additionalInstructions,
-            })
-          : buildPlanPrompt({
-              lead: req.lead,
-              objective: req.objective,
-              communicationFormat: req.communicationFormat,
-              additionalInstructions: req.additionalInstructions,
-            });
+  const prompt =
+    req.isAdaptation && req.previousPlan
+      ? buildAdaptPlanPrompt({
+          lead: {
+            id: req.lead.id,
+            name: req.lead.name,
+            location: req.lead.location,
+            propertyRequirement: req.lead.propertyRequirement,
+            budget: req.lead.budget,
+            buyingTimeline: req.lead.buyingTimeline,
+            customerMessage: req.lead.customerMessage,
+          },
+          previousPlan: {
+            planId: req.previousPlan.planId,
+            planVersion: req.previousPlan.planVersion,
+            planTitle: `Momentum Plan v${req.previousPlan.planVersion}`,
+            objective: req.objective,
+            completedSteps: req.previousPlan.completedSteps,
+            remainingSteps: req.previousPlan.remainingSteps,
+            adaptationReason: req.previousPlan.adaptationReason,
+          },
+          additionalInstructions: req.additionalInstructions,
+        })
+      : buildPlanPrompt({
+          lead: req.lead,
+          objective: req.objective,
+          communicationFormat: req.communicationFormat,
+          additionalInstructions: req.additionalInstructions,
+        });
 
-      const { text, model } = await callGeminiRaw(prompt, { jsonMode: true, temperature: 0.3 });
-      const parsed = JSON.parse(text);
+  const dedupeKey = `plan:${req.lead.id}:${req.objective}:${planVersion}`;
+
+  const cascadeRes = await executeAIWithCascade({
+    prompt,
+    jsonMode: true,
+    temperature: 0.3,
+    maxTokens: 2000,
+    dedupeKey,
+  });
+
+  if (cascadeRes.mode === "live" && cascadeRes.text) {
+    try {
+      const parsed = JSON.parse(cascadeRes.text);
       const validated = validatePlanResponse(parsed, {
         planId,
         leadId: req.lead.id,
@@ -459,32 +403,20 @@ export async function performLeadPlan(req: PlanRequest): Promise<PlanResponse> {
       return {
         ...validated,
         meta: {
-          provider: "google-gemini",
-          model,
+          provider: cascadeRes.provider,
+          model: cascadeRes.model,
           mode: "live",
           fallbackUsed: false,
+          secondaryUsed: cascadeRes.secondaryUsed,
+          primaryFailureReason: cascadeRes.primaryFailureReason,
           latencyMs,
         },
       };
-    } catch (err) {
-      console.warn("Live Gemini plan generation failed, falling back to heuristic engine:", err);
-      const latencyMs = Math.round(performance.now() - start);
-      const fallback = generateFallbackPlan(req, planId, planVersion);
-      return {
-        ...fallback,
-        meta: {
-          provider: "offline-heuristic",
-          model: null,
-          mode: "fallback",
-          fallbackUsed: true,
-          latencyMs,
-          message: err instanceof Error ? err.message : "Live Gemini call failed",
-        },
-      };
+    } catch (parseErr) {
+      console.warn("[LeadMotive AI] Live plan validation failed, falling back to heuristic:", parseErr);
     }
   }
 
-  // Unconfigured: explicit offline heuristic engine
   const latencyMs = Math.round(performance.now() - start);
   const fallback = generateFallbackPlan(req, planId, planVersion);
   return {
@@ -494,56 +426,28 @@ export async function performLeadPlan(req: PlanRequest): Promise<PlanResponse> {
       model: null,
       mode: "fallback",
       fallbackUsed: true,
+      secondaryUsed: false,
+      primaryFailureReason: cascadeRes.primaryFailureReason,
       latencyMs,
-      message: "Server GEMINI_API_KEY unconfigured. Generated via offline heuristic engine.",
+      message: cascadeRes.primaryFailureReason
+        ? `Primary provider unavailable (${cascadeRes.primaryFailureReason}). Generated via offline heuristic engine.`
+        : "Generated via offline heuristic engine.",
     },
   };
 }
 
 /**
  * Developer diagnostic ping to test server AI connectivity.
+ * Zero external calls for passive checks; minimal ping for explicit tests.
  * Never reveals the raw API key.
  */
-export async function checkServerDiagnostics(): Promise<DiagnosticsResponse> {
-  const config = getAIConfig();
-
-  if (!config.isConfigured) {
-    return {
-      configured: false,
-      model: config.model,
-      tested: false,
-      status: "unconfigured",
-      message: "GEMINI_API_KEY is not set in server environment variables.",
-    };
+export async function checkServerDiagnostics(options?: {
+  forceLiveTest?: boolean;
+}): Promise<DiagnosticsResponse> {
+  if (options?.forceLiveTest) {
+    return runActiveDiagnostics();
   }
-
-  const start = performance.now();
-  try {
-    const { text, model } = await callGeminiRaw("Reply with 'READY'", {
-      jsonMode: false,
-      temperature: 0.0,
-    });
-    const latencyMs = Math.round(performance.now() - start);
-
-    return {
-      configured: true,
-      model,
-      tested: true,
-      status: "ready",
-      latencyMs,
-      message: `Successfully connected to ${model} (${latencyMs}ms). Response: ${text.slice(0, 20)}`,
-    };
-  } catch (err) {
-    const latencyMs = Math.round(performance.now() - start);
-    return {
-      configured: true,
-      model: config.model,
-      tested: true,
-      status: "error",
-      latencyMs,
-      message: err instanceof Error ? err.message : "Connection test failed",
-    };
-  }
+  return getPassiveDiagnostics();
 }
 
 
@@ -818,7 +722,7 @@ function generateFallbackPlan(
       communicationDraft: {
         channel: req.communicationFormat === "general_action" ? "whatsapp" : req.communicationFormat,
         suggestedTone: "Helpful, non-intrusive, and consultative",
-        draft: `Hi ${firstName}, thank you for contacting SignalDesk about homes in ${lead.location}. To ensure I share options that genuinely fit what you're looking for, could you share what budget range and timeline you're planning for? We have options ranging across configurations.`,
+        draft: `Hi ${firstName}, thank you for contacting LeadMotive about homes in ${lead.location}. To ensure I share options that genuinely fit what you're looking for, could you share what budget range and timeline you're planning for? We have options ranging across configurations.`,
         concernAddressed: "Missing budget and timeline qualification.",
         verificationChecklist: ["Locality price bands in " + lead.location],
       },

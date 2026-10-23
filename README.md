@@ -1,16 +1,16 @@
-# SignalDesk — Real Estate Lead Intelligence
+# LeadMotive — Real Estate Lead Intelligence
 
-> AI-powered lead prioritisation, contextual sales coaching, and objection rehearsal for Bengaluru real estate.
+> AI-Powered Real Estate Lead Intelligence. Know which buyer to move next. Know what to say.
 
-SignalDesk is an enterprise-grade sales intelligence workbench designed for high-velocity real estate markets. It solves the critical triage bottleneck in high-ticket property sales: helping sales representatives decide who to call within the golden 15-minute window, uncovering hidden buyer anxieties (pricing per sqft, RERA delivery delays, A-Khata legal validity), and enabling reps to rehearse objections before dialing.
+LeadMotive is an enterprise-grade sales intelligence workbench designed for high-velocity real estate markets. It solves the critical triage bottleneck in high-ticket property sales: helping sales representatives decide who to call within the golden 15-minute window, uncovering hidden buyer anxieties (pricing per sqft, RERA delivery delays, A-Khata legal validity), and enabling reps to rehearse objections before dialing.
 
 ---
 
-## What SignalDesk Solves
+## What LeadMotive Solves
 
-1. **Lead Triage Bottleneck**: Real estate teams receive dozens of raw inquiries daily. Reps waste hours manually skimming messages to guess urgency. SignalDesk calculates a 0ms deterministic priority score (0–100) instantly categorizing leads into **Hot**, **Warm**, and **Cold** bands.
-2. **Hidden Buyer Objections**: Inbound inquiries often hide real objections behind casual inquiries. SignalDesk leverages server-side Google Gemini 3.8 Flash to extract structured intent, specific property requirements, and grounded objection quotes verified against raw text.
-3. **Execution Hesitation & Cold Calls**: Salespeople often enter calls cold and falter when prospects push back on price or possession timelines. SignalDesk’s signature **Objection Rehearsal Studio** allows reps to simulate conversations with an AI buyer and receive structured 4-dimension coaching debriefs before picking up the telephone.
+1. **Lead Triage Bottleneck**: Real estate teams receive dozens of raw inquiries daily. Reps waste hours manually skimming messages to guess urgency. LeadMotive calculates a 0ms deterministic priority score (0–100) instantly categorizing leads into **Act Now**, **Follow Up**, and **Nurture** bands.
+2. **Hidden Buyer Objections**: Inbound inquiries often hide real objections behind casual inquiries. LeadMotive leverages server-side Google Gemini models to extract structured intent, specific property requirements, and grounded objection quotes verified against raw text.
+3. **Execution Hesitation & Cold Calls**: Salespeople often enter calls cold and falter when prospects push back on price or possession timelines. LeadMotive’s signature **Objection Rehearsal Studio** allows reps to simulate conversations with an AI buyer and receive structured 4-dimension coaching debriefs before picking up the telephone.
 
 ---
 
@@ -84,7 +84,7 @@ SignalDesk is an enterprise-grade sales intelligence workbench designed for high
 
 ## 4-Factor Deterministic Scoring Formula
 
-Unlike systems that rely on unpredictable LLM scoring, SignalDesk uses a pure, deterministic 100-point rubric calculated in 0ms on the client:
+Unlike systems that rely on unpredictable LLM scoring, LeadMotive uses a pure, deterministic 100-point rubric calculated in 0ms on the client:
 
 $$\text{Total Priority Score} = \text{Timeline} + \text{Intent} + \text{Completeness} + \text{Depth}$$
 
@@ -96,9 +96,9 @@ $$\text{Total Priority Score} = \text{Timeline} + \text{Intent} + \text{Complete
 | **Engagement Depth** | **15 pts** | ≥3 conversation turns: 15 pts<br>2 turns: 10 pts<br>Substantive initial message (≥20 chars): 4 pts<br>Empty / unreadable: 0 pts |
 
 ### Priority Bands
-- **🔥 Hot Lead (75–100 pts)**: Immediate action window, strong financial readiness. Target response: **< 15 minutes**.
-- **⚡ Warm Lead (45–74 pts)**: Active qualification phase. Target response: **< 2 hours**.
-- **❄️ Cold Lead (0–44 pts)**: Exploratory research or vague requirements. Automated nurture drip.
+- **🔥 Act Now (75–100 pts)**: Immediate action window, strong financial readiness. Target response: **< 15 minutes**.
+- **⚡ Follow Up (45–74 pts)**: Active qualification phase. Target response: **< 2 hours**.
+- **❄️ Nurture (0–44 pts)**: Exploratory research or vague requirements. Automated nurture drip.
 
 > **CRITICAL DISCLAIMER**: The priority score is an explainable qualification heuristic, **not a statistical probability of conversion**.
 
@@ -178,7 +178,7 @@ docs/
 ```bash
 # Clone and install dependencies
 git clone <repo-url>
-cd signaldesk
+cd leadmotive
 npm install
 ```
 
@@ -187,16 +187,19 @@ Create `.env.local` in the project root:
 ```bash
 cp .env.example .env.local
 ```
-Edit `.env.local`:
+Configure environment variables:
 ```env
-# Google Gemini API key (Server-only secret)
-# Get a free key at: https://aistudio.google.com/apikey
+# Primary AI Provider: Google Gemini (Server-only secret)
+# Get a key at: https://aistudio.google.com/apikey
 GEMINI_API_KEY=your_gemini_api_key_here
+GEMINI_MODEL=gemini-3.5-flash-lite
 
-# Optional model override (Default: gemini-3.8-flash)
-GEMINI_MODEL=gemini-3.8-flash
+# Optional Secondary AI Provider: Groq (Server-only secret)
+# Get an optional key at: https://console.groq.com/keys
+GROQ_API_KEY=your_groq_api_key_here
+GROQ_MODEL=openai/gpt-oss-20b
 ```
-*(Note: If `GEMINI_API_KEY` is omitted, the application runs fully via its high-fidelity offline heuristic engine with full telemetry disclosure).*
+*(Note: `GROQ_API_KEY` is completely optional. If only Gemini is configured, LeadMotive operates with Gemini. If Gemini encounters rate limits (429) or transient outages, it cascades to Groq (using `openai/gpt-oss-20b` if configured) or smoothly transitions to its high-fidelity deterministic offline Bengaluru heuristic engine with full telemetry disclosure).*
 
 ### 4. Running the Dev Server
 ```bash
@@ -208,7 +211,7 @@ Open [http://localhost:3000](http://localhost:3000) for the homepage, or [http:/
 ```bash
 npm test
 ```
-Executes all 43 tests across all 6 test suites in ~380ms with 0 failures.
+Executes all test suites with 0 failures.
 
 ### 6. Code Quality Checks
 ```bash
@@ -226,6 +229,6 @@ npm run build
 
 ## Browser Persistence & Free-Tier Boundaries
 
-1. **Storage Limits**: Data is persisted in the browser via `localStorage` under `signaldesk_leads_v1`. It is designed for single-user evaluation and demo sessions. In production, this layer swaps for PostgreSQL / Supabase with Row Level Security.
-2. **Free-Tier API Constraints**: Google's Gemini Developer API free-tier imposes rate limits (15 RPM). If exceeded, SignalDesk automatically transitions to offline heuristics without crashing.
+1. **Storage Limits**: Data is persisted in the browser via `localStorage` under `leadmotive_leads_v1`. It is designed for single-user evaluation and demo sessions. In production, this layer swaps for PostgreSQL / Supabase with Row Level Security.
+2. **Free-Tier API Constraints**: Google's Gemini Developer API free-tier imposes rate limits (15 RPM). If exceeded, LeadMotive automatically transitions to offline heuristics without crashing.
 3. **Synthetic Bengaluru Data**: All records, names, pricing, and phone numbers are 100% synthetic fixtures for Bengaluru property corridors. Real customer PII must never be entered under free-tier API terms.

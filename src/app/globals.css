@@ -1,207 +1,310 @@
 @import "tailwindcss";
 
 /* =========================================================================
-   SignalDesk Design System
-   High-clarity professional workspace for real-estate lead intelligence.
+   LeadMotive Design System — Master Visual Architecture
+   Dual-Theme Experience:
+     - Day Mode:   Terracotta Editorial (Cream, rust, charcoal, and bronze)
+     - Night Mode: Midnight Tech (Deep navy, electric cyan, and crisp white)
    ========================================================================= */
 
 @theme inline {
   /* Surfaces */
-  --color-canvas: var(--sd-canvas);
-  --color-panel: var(--sd-surface);
-  --color-raised: var(--sd-surface-elevated);
+  --color-canvas: var(--lm-canvas);
+  --color-panel: var(--lm-surface);
+  --color-raised: var(--lm-surface-elevated);
+  --color-secondary: var(--lm-surface-secondary);
+  --color-nav: var(--lm-nav-surface);
 
-  /* Text */
-  --color-ink: var(--sd-text-primary);
-  --color-muted: var(--sd-text-secondary);
-  --color-subtle: var(--sd-text-tertiary);
+  /* Typography / Text */
+  --color-ink: var(--lm-text-primary);
+  --color-muted: var(--lm-text-secondary);
+  --color-subtle: var(--lm-text-tertiary);
 
-  /* Brand */
-  --color-brand: var(--sd-brand);
-  --color-brand-hover: var(--sd-brand-hover);
-  --color-accent: var(--sd-accent);
-  --color-accent-fg: var(--sd-accent-text);
+  /* Brand / Actions */
+  --color-brand: var(--lm-brand);
+  --color-brand-hover: var(--lm-brand-hover);
+  --color-brand-fg: var(--lm-brand-text);
+  --color-accent: var(--lm-accent);
+  --color-accent-fg: var(--lm-accent-text);
 
-  /* Borders */
-  --color-edge: var(--sd-border);
-  --color-divider: var(--sd-border-subtle);
+  /* Borders & Dividers */
+  --color-edge: var(--lm-border);
+  --color-divider: var(--lm-border-subtle);
 
   /* Status */
-  --color-danger: var(--sd-error);
-  --color-caution: var(--sd-warning);
-  --color-positive: var(--sd-success);
+  --color-danger: var(--lm-error);
+  --color-caution: var(--lm-warning);
+  --color-positive: var(--lm-success);
 
-  /* Priority bands */
-  --color-hot: var(--sd-hot);
-  --color-hot-fill: var(--sd-hot-bg);
-  --color-warm: var(--sd-warm);
-  --color-warm-fill: var(--sd-warm-bg);
-  --color-cold: var(--sd-cold);
-  --color-cold-fill: var(--sd-cold-bg);
+  /* Priority bands: Act Now (Red), Follow Up (Amber), Nurture (Blue) */
+  --color-hot: var(--lm-hot);
+  --color-hot-fill: var(--lm-hot-bg);
+  --color-hot-border: var(--lm-hot-border);
+  --color-warm: var(--lm-warm);
+  --color-warm-fill: var(--lm-warm-bg);
+  --color-warm-border: var(--lm-warm-border);
+  --color-cold: var(--lm-cold);
+  --color-cold-fill: var(--lm-cold-bg);
+  --color-cold-border: var(--lm-cold-border);
 
   /* Typography */
-  --font-sans: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
-  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --font-sans: var(--font-geist-sans), "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
-  /* Shadows — tuned per theme */
-  --shadow-xs: var(--sd-shadow-xs);
-  --shadow-sm: var(--sd-shadow-sm);
-  --shadow-md: var(--sd-shadow-md);
-  --shadow-lg: var(--sd-shadow-lg);
+  /* Shadows */
+  --shadow-xs: var(--lm-shadow-xs);
+  --shadow-sm: var(--lm-shadow-sm);
+  --shadow-md: var(--lm-shadow-md);
+  --shadow-lg: var(--lm-shadow-lg);
+  --shadow-glow: var(--lm-shadow-glow);
 
-  /* Radii — restrained */
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
-  --radius-xl: 12px;
+  /* Radii */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
 
   /* Motion */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
-  --duration-fast: 120ms;
-  --duration-normal: 200ms;
-  --duration-slow: 300ms;
+  --duration-fast: 150ms;
+  --duration-normal: 220ms;
+  --duration-slow: 320ms;
 }
 
-/* --- Light Theme --- */
+/* =========================================================================
+   2.1 Day Mode — Terracotta Editorial
+   Cream, rust, charcoal, and bronze. Warm architectural light, natural tones.
+   ========================================================================= */
 :root,
 [data-theme="light"] {
-  --sd-canvas: #f4f6f2;
-  --sd-surface: #ffffff;
-  --sd-surface-elevated: #e9eee8;
-  --sd-text-primary: #17231c;
-  --sd-text-secondary: #657169;
-  --sd-text-tertiary: #8a948d;
-  --sd-brand: #244b37;
-  --sd-brand-hover: #1a3829;
-  --sd-accent: #c7ed73;
-  --sd-accent-text: #17231c;
-  --sd-border: #dde4dc;
-  --sd-border-subtle: #ecf0eb;
-  --sd-error: #dc2626;
-  --sd-warning: #d97706;
-  --sd-success: #16a34a;
-  --sd-hot: #b91c1c;
-  --sd-hot-bg: #fef2f2;
-  --sd-warm: #b45309;
-  --sd-warm-bg: #fffbeb;
-  --sd-cold: #475569;
-  --sd-cold-bg: #f1f5f9;
-  --sd-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
-  --sd-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
-  --sd-shadow-md: 0 4px 8px rgba(0, 0, 0, 0.06), 0 2px 4px rgba(0, 0, 0, 0.04);
-  --sd-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.08);
+  --lm-canvas: #F6F1E9;
+  --lm-nav-surface: #141614; /* Deep charcoal / black sidebar for Day Mode */
+  --lm-surface: #FFFCF7;
+  --lm-surface-elevated: #F2ECE0;
+  --lm-surface-secondary: #EEE6DA;
+
+  --lm-text-primary: #252824;
+  --lm-text-secondary: #676960;
+  --lm-text-tertiary: #8C8E85;
+
+  --lm-brand: #B94F34;
+  --lm-brand-hover: #923D29;
+  --lm-brand-text: #FFFFFF;
+
+  --lm-accent: #C08A52;
+  --lm-accent-text: #FFFFFF;
+
+  --lm-border: #DCD2C5;
+  --lm-border-subtle: #E8E0D5;
+
+  --lm-error: #DC2626;
+  --lm-warning: #D97706;
+  --lm-success: #15803D;
+
+  /* Priority bands: Act Now (Red), Follow Up (Amber/Orange), Nurture (Blue) */
+  --lm-hot: #B42318;
+  --lm-hot-bg: #FEE4E2;
+  --lm-hot-border: #FDA29B;
+
+  --lm-warm: #9A4D00;
+  --lm-warm-bg: #FFF0CC;
+  --lm-warm-border: #F5C26B;
+
+  --lm-cold: #175CD3;
+  --lm-cold-bg: #EAF2FF;
+  --lm-cold-border: #A6C8FF;
+
+  --lm-shadow-xs: 0 1px 2px rgba(37, 40, 36, 0.05);
+  --lm-shadow-sm: 0 2px 4px rgba(37, 40, 36, 0.06), 0 1px 2px rgba(37, 40, 36, 0.04);
+  --lm-shadow-md: 0 6px 16px rgba(37, 40, 36, 0.08), 0 2px 6px rgba(37, 40, 36, 0.04);
+  --lm-shadow-lg: 0 12px 32px rgba(37, 40, 36, 0.12);
+  --lm-shadow-glow: 0 0 16px rgba(185, 79, 52, 0.18);
+
   color-scheme: light;
 }
 
-/* --- Dark Theme --- */
+/* =========================================================================
+   2.2 Night Mode — Midnight Tech
+   Navy, electric cyan, and crisp white. Real-time intelligence console.
+   ========================================================================= */
 [data-theme="dark"] {
-  --sd-canvas: #0d1311;
-  --sd-surface: #141c18;
-  --sd-surface-elevated: #1b2520;
-  --sd-text-primary: #edf3ec;
-  --sd-text-secondary: #a3b1a7;
-  --sd-text-tertiary: #6b7b70;
-  --sd-brand: #9bcb80;
-  --sd-brand-hover: #b0d99a;
-  --sd-accent: #c7ed73;
-  --sd-accent-text: #0d1311;
-  --sd-border: #303d35;
-  --sd-border-subtle: #1e2b24;
-  --sd-error: #ef4444;
-  --sd-warning: #f59e0b;
-  --sd-success: #22c55e;
-  --sd-hot: #fca5a5;
-  --sd-hot-bg: rgba(239, 68, 68, 0.1);
-  --sd-warm: #fcd34d;
-  --sd-warm-bg: rgba(245, 158, 11, 0.1);
-  --sd-cold: #cbd5e1;
-  --sd-cold-bg: rgba(148, 163, 184, 0.08);
-  --sd-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.15);
-  --sd-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.2);
-  --sd-shadow-md: 0 4px 8px rgba(0, 0, 0, 0.25);
-  --sd-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.35);
+  --lm-canvas: #071521;
+  --lm-nav-surface: #091D2B;
+  --lm-surface: #102738;
+  --lm-surface-elevated: #163447;
+  --lm-surface-secondary: #132B3C;
+
+  --lm-text-primary: #F1F7FB;
+  --lm-text-secondary: #B6C9D8; /* High-contrast readable secondary */
+  --lm-text-tertiary: #8EA4B5;  /* Clear, legible metadata & labels */
+
+  --lm-brand: #27D6E8;
+  --lm-brand-hover: #5CE8F2;
+  --lm-brand-text: #06232D;
+
+  --lm-accent: #27D6E8;
+  --lm-accent-text: #06232D;
+
+  --lm-border: #29495A;
+  --lm-border-subtle: #1C3949;
+
+  --lm-error: #FF6B6B;
+  --lm-warning: #FBBF24;
+  --lm-success: #22C55E;
+
+  /* Priority bands: Act Now (Red), Follow Up (Amber/Orange), Nurture (Blue) */
+  --lm-hot: #FF8A80;
+  --lm-hot-bg: #421D22;
+  --lm-hot-border: #87333A;
+
+  --lm-warm: #FFC166;
+  --lm-warm-bg: #3B2A15;
+  --lm-warm-border: #80571D;
+
+  --lm-cold: #8DBBFF;
+  --lm-cold-bg: #172D4D;
+  --lm-cold-border: #355E91;
+
+  --lm-shadow-xs: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --lm-shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --lm-shadow-md: 0 6px 20px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.4);
+  --lm-shadow-lg: 0 14px 40px rgba(0, 0, 0, 0.7);
+  --lm-shadow-glow: 0 0 20px rgba(39, 214, 232, 0.25);
+
   color-scheme: dark;
 }
 
-/* --- Base --- */
+/* Accessible Skip to Content Link (Completely hidden during normal browsing, visible only on keyboard focus) */
+.skip-link {
+  position: absolute !important;
+  top: -9999px !important;
+  left: -9999px !important;
+  width: 1px !important;
+  height: 1px !important;
+  margin: -1px !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  z-index: 99999 !important;
+}
+
+.skip-link:focus,
+.skip-link:focus-visible {
+  position: fixed !important;
+  top: 1rem !important;
+  left: 1rem !important;
+  width: auto !important;
+  height: auto !important;
+  margin: 0 !important;
+  padding: 0.6rem 1.2rem !important;
+  overflow: visible !important;
+  clip: auto !important;
+  white-space: normal !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  background: var(--lm-brand) !important;
+  color: var(--lm-brand-text) !important;
+  font-weight: 700 !important;
+  font-size: 0.8125rem !important;
+  border-radius: 0.5rem !important;
+  box-shadow: var(--lm-shadow-lg) !important;
+  text-decoration: none !important;
+  outline: 2px solid var(--lm-accent) !important;
+  outline-offset: 2px !important;
+}
+
+/* Base Body & Layout */
 html {
   scroll-behavior: smooth;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  font-size: 15px; /* Clean baseline desktop scale */
 }
 
 body {
-  background: var(--sd-canvas);
-  color: var(--sd-text-primary);
+  background: var(--lm-canvas);
+  color: var(--lm-text-primary);
   font-family: var(--font-sans);
-  line-height: 1.5;
+  line-height: 1.55;
   min-height: 100dvh;
+  transition: background-color var(--duration-normal) var(--ease-out), color var(--duration-normal) var(--ease-out);
 }
 
-/* Skip link */
-.skip-link {
-  position: absolute;
-  top: -100%;
-  left: 0;
-  padding: 0.75rem 1.5rem;
-  background: var(--sd-brand);
-  color: white;
-  font-weight: 600;
-  z-index: 9999;
-  border-radius: 0 0 var(--radius-md) 0;
-  transition: top var(--duration-fast) var(--ease-in-out);
-}
-.skip-link:focus {
-  top: 0;
-}
-
-/* Focus ring */
+/* Focus outline */
 *:focus-visible {
-  outline: 2px solid var(--sd-brand);
+  outline: 2px solid var(--lm-brand);
   outline-offset: 2px;
 }
 
 /* Selection */
 ::selection {
-  background: rgba(199, 237, 115, 0.3);
+  background: rgba(39, 214, 232, 0.25);
+  color: var(--lm-text-primary);
 }
 
-/* Scrollbar */
+[data-theme="light"] ::selection {
+  background: rgba(185, 79, 52, 0.2);
+  color: #252824;
+}
+
+/* Custom Sleek Scrollbar */
 ::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--sd-text-tertiary);
-  border-radius: 3px;
+  background: var(--lm-border);
+  border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--sd-text-secondary);
+  background: var(--lm-text-tertiary);
 }
 
-/* --- Animations --- */
+/* Sidebar & Drawer Accent Animations */
+@keyframes drawer-accent-sweep {
+  0% {
+    box-shadow: inset 4px 0 0 var(--lm-brand), -4px 0 20px rgba(39, 214, 232, 0.15);
+  }
+  100% {
+    box-shadow: inset 2px 0 0 transparent, 0 0 0 transparent;
+  }
+}
+
+.anim-drawer-open {
+  animation: drawer-accent-sweep 0.8s var(--ease-out) forwards;
+}
+
+/* Micro-animations */
 @keyframes fade-in {
   from { opacity: 0; }
   to { opacity: 1; }
 }
+
 @keyframes fade-up {
-  from { opacity: 0; transform: translateY(8px); }
+  from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
 @keyframes slide-in-right {
-  from { opacity: 0; transform: translateX(16px); }
+  from { opacity: 0; transform: translateX(24px); }
   to { opacity: 1; transform: translateX(0); }
 }
+
 @keyframes slide-in-left {
-  from { opacity: 0; transform: translateX(-16px); }
+  from { opacity: 0; transform: translateX(-24px); }
   to { opacity: 1; transform: translateX(0); }
 }
+
 @keyframes scale-in {
-  from { opacity: 0; transform: scale(0.97); }
+  from { opacity: 0; transform: scale(0.96); }
   to { opacity: 1; transform: scale(1); }
 }
 
@@ -211,7 +314,7 @@ body {
 .anim-slide-l { animation: slide-in-left var(--duration-slow) var(--ease-out) both; }
 .anim-scale { animation: scale-in var(--duration-normal) var(--ease-out) both; }
 
-/* --- Reduced Motion --- */
+/* Reduced Motion */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -220,4 +323,35 @@ body {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* =========================================================================
+   3. Canonical Lead Priority Badge Utility Classes
+   Act Now (Red), Follow Up (Amber/Orange), Nurture (Blue)
+   ========================================================================= */
+.badge-priority-hot {
+  background-color: var(--lm-hot-bg) !important;
+  color: var(--lm-hot) !important;
+  border: 1px solid var(--lm-hot-border) !important;
+}
+
+.badge-priority-warm {
+  background-color: var(--lm-warm-bg) !important;
+  color: var(--lm-warm) !important;
+  border: 1px solid var(--lm-warm-border) !important;
+}
+
+.badge-priority-cold {
+  background-color: var(--lm-cold-bg) !important;
+  color: var(--lm-cold) !important;
+  border: 1px solid var(--lm-cold-border) !important;
+}
+
+/* Hide scrollbar while maintaining scroll functionality */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
 }

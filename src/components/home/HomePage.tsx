@@ -1,51 +1,41 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import {
   ArrowRight,
-  Sparkles,
   Target,
-  ShieldCheck,
-  Clock,
-  MapPin,
   Check,
   Copy,
-  ChevronDown,
-  ChevronUp,
   MessageSquare,
-  Flame,
-  Snowflake,
-  ExternalLink,
-  Bot,
-  Zap,
   Compass,
   CheckCircle2,
-  MessageCircle,
+  BarChart3,
+  Play,
+  Quote,
 } from "lucide-react";
-import { ThemeToggle } from "@/components/app-shell/ThemeProvider";
+import { ThemeToggle, useTheme } from "@/components/app-shell/ThemeProvider";
+import { LeadMotiveLogo } from "@/components/common/LeadMotiveLogo";
 import { SEED_LEADS } from "@/lib/leads/fixtures";
-import { SEEDED_MOMENTUM_PLANS } from "@/lib/leads/momentum-fixtures";
-import { formatINR, formatTimeline } from "@/lib/utils/format";
-import { priorityBandColor } from "@/lib/leads/scoring";
+import { formatINR } from "@/lib/utils/format";
+import { PRIORITY_BAND_LABELS, PRIORITY_STYLES } from "@/lib/leads/scoring";
 import type { Lead } from "@/types/lead";
 
 export function HomePage() {
-  // Use canonical seed leads for interactive preview
-  const previewLeads = SEED_LEADS.slice(0, 3); // Priya (Hot), Arjun (Warm), Deepak (Cold)
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+
+  // Exactly 1 Act Now, 1 Follow Up, and 1 Nurture lead for clear model explanation
+  const previewLeads: Lead[] = [
+    SEED_LEADS.find((l) => l.id === "lead-001") || SEED_LEADS[0], // Priya Sharma: Act Now (89)
+    SEED_LEADS.find((l) => l.id === "lead-002") || SEED_LEADS[1], // Arjun Reddy: Follow Up (66)
+    SEED_LEADS.find((l) => l.id === "lead-006") || SEED_LEADS[5], // Deepak Gowda: Nurture (20)
+  ];
   const [selectedLeadId, setSelectedLeadId] = useState<string>(previewLeads[0].id);
-  const [showMathDetails, setShowMathDetails] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  // Momentum plan preview state
-  const [momentumLeadId, setMomentumLeadId] = useState<string>("lead-001");
-  const [expandedStepId, setExpandedStepId] = useState<string | null>("step-p1");
-
   const activeLead: Lead = previewLeads.find((l) => l.id === selectedLeadId) || previewLeads[0];
-  const bandStyle = priorityBandColor(activeLead.priority.band);
-
-  const activeMomentumPlan =
-    SEEDED_MOMENTUM_PLANS[momentumLeadId] || SEEDED_MOMENTUM_PLANS["lead-001"];
 
   const handleCopy = (text: string, id: string) => {
     navigator.clipboard.writeText(text).catch(() => {});
@@ -53,317 +43,432 @@ export function HomePage() {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.location.hash) {
+      const id = window.location.hash.replace("#", "");
+      const el = document.getElementById(id);
+      if (el) {
+        setTimeout(() => el.scrollIntoView({ behavior: "smooth" }), 200);
+      }
+    }
+  }, []);
+
+  const scrollToSection = (id: string) => (e: React.MouseEvent) => {
+    e.preventDefault();
+    const el = document.getElementById(id);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth" });
+      if (typeof window !== "undefined") {
+        window.history.pushState(null, "", `#${id}`);
+      }
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-canvas text-ink flex flex-col selection:bg-accent selection:text-accent-fg">
+    <div className="min-h-screen bg-canvas text-ink flex flex-col selection:bg-brand/20 selection:text-ink transition-colors duration-200">
       {/* ── Top Navigation Bar ── */}
-      <header className="sticky top-0 z-40 bg-panel/85 backdrop-blur-md border-b border-edge transition-colors">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-          {/* Brand */}
-          <Link href="/" className="flex items-center gap-2.5 group">
-            <div className="w-8 h-8 rounded-lg bg-brand flex items-center justify-center text-accent font-bold text-sm shadow-xs transition-transform group-hover:scale-105">
-              S
-            </div>
-            <div className="flex flex-col">
-              <span className="font-semibold text-sm tracking-tight text-ink">SignalDesk</span>
-              <span className="text-[10px] text-subtle font-mono uppercase tracking-wider">Lead Intelligence</span>
-            </div>
+      <header className="sticky top-0 z-40 bg-panel/90 backdrop-blur-md border-b border-edge transition-colors">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
+          {/* Brand Logo */}
+          <Link href="/" className="group flex items-center gap-2">
+            <LeadMotiveLogo size="md" />
           </Link>
 
-          {/* Desktop Nav Links */}
-          <nav className="hidden md:flex items-center gap-6 text-xs font-medium text-muted">
-            <a href="#preview" className="hover:text-ink transition-colors">Interactive Preview</a>
-            <a href="#how-it-works" className="hover:text-ink transition-colors">How It Works</a>
-            <a href="#momentum" className="hover:text-ink transition-colors font-semibold text-accent">Momentum Plan</a>
-            <a href="#rehearsal" className="hover:text-ink transition-colors">Objection Rehearsal</a>
-            <a href="#scoring" className="hover:text-ink transition-colors">4-Factor Scoring</a>
-            <a href="#trust" className="hover:text-ink transition-colors">Trust & Evidence</a>
+          {/* Nav Links */}
+          <nav className="hidden lg:flex items-center gap-8 text-sm font-medium text-muted">
+            <a href="#features" onClick={scrollToSection("features")} className="hover:text-ink transition-colors">Product</a>
+            <a href="#how-it-works" onClick={scrollToSection("how-it-works")} className="hover:text-ink transition-colors">How it works</a>
+            <a href="#scoring" onClick={scrollToSection("scoring")} className="hover:text-ink transition-colors">Scoring Model</a>
           </nav>
 
-
-          {/* Right actions */}
+          {/* Right Header Actions */}
           <div className="flex items-center gap-3">
             <ThemeToggle compact />
             <Link
               href="/workspace"
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-xs font-medium bg-brand text-accent hover:opacity-95 transition-opacity shadow-xs focus:outline-hidden focus:ring-2 focus:ring-accent"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold bg-brand text-brand-fg hover:opacity-90 transition-all shadow-xs cursor-pointer active:scale-95"
             >
-              <span>Launch workspace</span>
-              <ArrowRight className="w-3.5 h-3.5" />
+              <span>Open Workspace</span>
+              <ArrowRight className="w-4 h-4" />
             </Link>
           </div>
         </div>
       </header>
 
       <main id="main-content" className="flex-1">
-        {/* ── Hero Section ── */}
-        <section className="py-16 md:py-24 px-4 sm:px-6 max-w-5xl mx-auto text-center">
-          {/* Eyebrow badge */}
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium bg-raised border border-edge text-muted mb-6 anim-fade-in">
-            <span className="w-2 h-2 rounded-full bg-accent" />
-            <span>Bengaluru Real Estate Sales Intelligence</span>
-            <span className="text-subtle">•</span>
-            <span className="font-mono text-[11px] text-subtle">0ms Deterministic Math + Gemini 3.8 Flash</span>
-          </div>
+        {/* ── HERO SECTION ── */}
+        <section className="relative overflow-hidden pt-12 pb-20 lg:pt-20 lg:pb-28 border-b border-edge">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 items-center">
+              {/* Left Column: Headlines & Pitch */}
+              <div className="lg:col-span-7 space-y-6 text-left">
+                {/* Chip */}
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-raised/70 border border-edge text-xs font-semibold tracking-wider uppercase text-subtle">
+                  <span className="w-2 h-2 rounded-full bg-brand animate-pulse" />
+                  <span>AI-POWERED REAL ESTATE LEAD INTELLIGENCE</span>
+                </div>
 
-          {/* Headline */}
-          <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold tracking-tight text-ink max-w-3xl mx-auto leading-[1.12] mb-6">
-            Know which lead to call. <br className="hidden sm:inline" />
-            <span className="text-muted">Know what to say.</span>
-          </h1>
+                {/* Main Headline */}
+                <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-ink leading-[1.08]">
+                  Know which buyer <br />
+                  <span className="text-brand">to move next.</span> <br />
+                  Know what to say.
+                </h1>
 
-          {/* Subtitle */}
-          <p className="text-base sm:text-lg text-muted max-w-2xl mx-auto leading-relaxed mb-8">
-            A high-clarity sales workbench for real-estate teams. Deterministically score buyer urgency in milliseconds, uncover hidden customer objections with AI, and practice your pitch before dialing.
-          </p>
+                {/* Subtitle */}
+                <p className="text-base sm:text-lg text-muted max-w-xl leading-relaxed font-normal">
+                  Turn every property enquiry into a clear next action. Prioritise high-intent buyers, understand their needs with AI, practise conversations, and accelerate your pipeline.
+                </p>
 
-          {/* CTAs */}
-          <div className="flex flex-wrap items-center justify-center gap-3.5 mb-12">
-            <Link
-              href="/workspace"
-              className="px-6 py-3 rounded-lg text-sm font-semibold bg-brand text-accent hover:opacity-95 transition-all shadow-md flex items-center gap-2 group"
-            >
-              <span>Launch Workspace</span>
-              <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
-            </Link>
-            <a
-              href="#preview"
-              className="px-5 py-3 rounded-lg text-sm font-medium border border-edge bg-panel text-ink hover:bg-raised transition-colors"
-            >
-              Explore Live Preview ↓
-            </a>
-          </div>
+                {/* Actions */}
+                <div className="flex flex-wrap items-center gap-4 pt-2">
+                  <Link
+                    href="/workspace"
+                    className="inline-flex items-center gap-2 px-6 py-3.5 rounded-xl text-base font-bold bg-brand text-brand-fg hover:opacity-90 transition-all shadow-md active:scale-95 cursor-pointer"
+                  >
+                    <span>Open Workspace</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </Link>
 
-          {/* Value Pillars */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-left max-w-4xl mx-auto pt-6 border-t border-edge/80">
-            <div className="p-3 rounded-lg bg-panel/50 border border-edge">
-              <span className="text-xs font-semibold text-ink block mb-0.5">4-Factor Scoring</span>
-              <span className="text-[11px] text-muted leading-snug block">Timeline, intent, requirements, and message engagement depth.</span>
-            </div>
-            <div className="p-3 rounded-lg bg-panel/50 border border-edge">
-              <span className="text-xs font-semibold text-ink block mb-0.5">Objection Rehearsal</span>
-              <span className="text-[11px] text-muted leading-snug block">Spar against AI playing the customer with real-time feedback.</span>
-            </div>
-            <div className="p-3 rounded-lg bg-panel/50 border border-edge">
-              <span className="text-xs font-semibold text-ink block mb-0.5">Zero Black Boxes</span>
-              <span className="text-[11px] text-muted leading-snug block">Sales reps inspect the mathematical rationale behind every score.</span>
-            </div>
-            <div className="p-3 rounded-lg bg-panel/50 border border-edge">
-              <span className="text-xs font-semibold text-ink block mb-0.5">Offline Resilient</span>
-              <span className="text-[11px] text-muted leading-snug block">Runs live Gemini or offline Bengaluru heuristic without breaking.</span>
+                  <a
+                    href="#scoring"
+                    onClick={scrollToSection("scoring")}
+                    className="inline-flex items-center gap-2 px-5 py-3.5 rounded-xl text-base font-semibold bg-panel hover:bg-raised text-ink border border-edge transition-all shadow-xs cursor-pointer"
+                  >
+                    <Play className="w-4 h-4 text-brand fill-brand" />
+                    <span>Watch Preview</span>
+                  </a>
+                </div>
+
+                {/* Metric pill strip */}
+                <div className="grid grid-cols-3 gap-4 pt-6 border-t border-edge/60 max-w-lg">
+                  <a
+                    href="#scoring"
+                    onClick={scrollToSection("scoring")}
+                    className="group cursor-pointer block"
+                    title="Explore Scoring Model"
+                  >
+                    <div className="text-2xl font-extrabold text-ink font-mono group-hover:text-brand transition-colors">100%</div>
+                    <div className="text-xs text-subtle font-medium mt-0.5 group-hover:text-ink transition-colors underline decoration-edge/80 underline-offset-2">Deterministic Scoring</div>
+                  </a>
+                  <div>
+                    <div className="text-2xl font-extrabold text-brand font-mono">&lt;800ms</div>
+                    <div className="text-xs text-subtle font-medium mt-0.5">AI Analysis Latency</div>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-extrabold text-ink font-mono">Bengaluru</div>
+                    <div className="text-xs text-subtle font-medium mt-0.5">Micro-Market Context</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Column: Architectural Hero Image with Dynamic Day/Night Treatment */}
+              <div className="lg:col-span-5 relative">
+                <div className="relative rounded-3xl overflow-hidden shadow-2xl border-2 border-edge group">
+                  <div className="relative aspect-[3/2] w-full">
+                    <Image
+                      src={isDark ? "/images/hero_night.jpg" : "/images/hero_day.jpg"}
+                      alt="Luxury modern residential development in Bengaluru"
+                      fill
+                      priority
+                      className="object-cover transition-transform duration-700 group-hover:scale-105"
+                      sizes="(max-width: 1024px) 100vw, 45vw"
+                    />
+                    {/* Subtle theme-tuned gradient vignette overlay */}
+                    <div
+                      className={`absolute inset-0 pointer-events-none transition-opacity ${
+                        isDark
+                          ? "bg-gradient-to-t from-[#071521] via-transparent to-transparent opacity-60"
+                          : "bg-gradient-to-t from-[#F6F1E9] via-transparent to-transparent opacity-40"
+                      }`}
+                    />
+                  </div>
+
+                  {/* Floating Hand-written Style Callout Overlay */}
+                  <div className="absolute top-4 right-4 bg-panel/90 backdrop-blur-md border border-edge/80 rounded-2xl p-3.5 shadow-lg max-w-[210px] select-none">
+                    <p className="text-xs font-serif italic text-ink leading-snug">
+                      &ldquo;More conversations. More site visits. More closed deals.&rdquo;
+                    </p>
+                    <div className="flex items-center gap-1.5 mt-2">
+                      <span className="w-2 h-2 rounded-full bg-positive" />
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-subtle">
+                        Live Sales Pipeline
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </section>
 
-        {/* ── Interactive Product Preview ── */}
-        <section id="preview" className="py-12 bg-raised/30 border-y border-edge">
-          <div className="max-w-5xl mx-auto px-4 sm:px-6">
-            <div className="text-center mb-8">
-              <span className="text-[11px] font-mono uppercase tracking-wider text-accent font-semibold block mb-1">
-                Interactive Product Preview
-              </span>
-              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-ink">
-                See How SignalDesk Qualifies Inbound Buyers
-              </h2>
-              <p className="text-xs sm:text-sm text-muted mt-2 max-w-xl mx-auto">
-                Click between canonical Bengaluru leads to test the live scoring math and qualitative AI synthesis.
-              </p>
+        {/* ── 4 CORE CAPABILITIES FEATURE CARDS ── */}
+        <section id="features" className="py-16 bg-raised/30 border-b border-edge scroll-mt-24">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              {/* Card 1 */}
+              <div className="p-6 rounded-2xl bg-panel border border-edge shadow-xs hover:border-brand/40 transition-all group">
+                <div className="w-12 h-12 rounded-xl bg-brand/10 border border-brand/20 flex items-center justify-center text-brand mb-4 group-hover:scale-110 transition-transform">
+                  <Target className="w-6 h-6" />
+                </div>
+                <h3 className="text-base font-bold text-ink mb-2">AI Lead Analysis</h3>
+                <p className="text-xs text-muted leading-relaxed font-normal">
+                  Extract intent, requirements, objections and next actions in seconds from unformatted raw buyer messages.
+                </p>
+              </div>
 
+              {/* Card 2 */}
+              <div className="p-6 rounded-2xl bg-panel border border-edge shadow-xs hover:border-brand/40 transition-all group">
+                <div className="w-12 h-12 rounded-xl bg-brand/10 border border-brand/20 flex items-center justify-center text-brand mb-4 group-hover:scale-110 transition-transform">
+                  <BarChart3 className="w-6 h-6" />
+                </div>
+                <h3 className="text-base font-bold text-ink mb-2">Smart Prioritisation</h3>
+                <p className="text-xs text-muted leading-relaxed font-normal">
+                  Focus on high-intent leads with transparent 4-factor scoring: Act Now (75+), Follow Up (45–74), Nurture (0–44).
+                </p>
+              </div>
+
+              {/* Card 3 - Objection Rehearsal */}
+              <div id="rehearsal" className="p-6 rounded-2xl bg-panel border border-edge shadow-xs hover:border-brand/40 transition-all group scroll-mt-28">
+                <div className="w-12 h-12 rounded-xl bg-brand/10 border border-brand/20 flex items-center justify-center text-brand mb-4 group-hover:scale-110 transition-transform">
+                  <MessageSquare className="w-6 h-6" />
+                </div>
+                <h3 className="text-base font-bold text-ink mb-2">Objection Rehearsal</h3>
+                <p className="text-xs text-muted leading-relaxed font-normal">
+                  Interactive real-time buyer persona simulation. Practise overcoming pricing hesitations, possession anxieties, and school commute objections with AI coaching feedback.
+                </p>
+              </div>
+
+              {/* Card 4 - Lead Momentum Plan */}
+              <div id="momentum" className="p-6 rounded-2xl bg-panel border border-edge shadow-xs hover:border-brand/40 transition-all group scroll-mt-28">
+                <div className="w-12 h-12 rounded-xl bg-brand/10 border border-brand/20 flex items-center justify-center text-brand mb-4 group-hover:scale-110 transition-transform">
+                  <Compass className="w-6 h-6" />
+                </div>
+                <h3 className="text-base font-bold text-ink mb-2">Lead Momentum Plan</h3>
+                <p className="text-xs text-muted leading-relaxed font-normal">
+                  Actionable multi-step closing roadmap. Converts buyer criteria into milestone-driven follow-ups with adaptive branching, WhatsApp scripts, and progress tracking.
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ── SECONDARY SHOWCASE: From enquiry to informed action ── */}
+        <section id="how-it-works" className="py-20 lg:py-28 border-b border-edge scroll-mt-24">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
+              {/* Left Column: Editorial Story */}
+              <div className="lg:col-span-6 space-y-6">
+                <div className="inline-block px-3 py-1 rounded-full bg-raised text-xs font-semibold uppercase tracking-wider text-subtle border border-edge">
+                  BUILT FOR REAL ESTATE SALES TEAMS
+                </div>
+
+                <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-ink tracking-tight leading-tight">
+                  From enquiry <br />
+                  to informed action.
+                </h2>
+
+                <p className="text-base text-muted leading-relaxed">
+                  LeadMotive combines deterministic scoring with advanced AI to help you understand every buyer, prioritise your time, and have better first conversations.
+                </p>
+
+                <div className="space-y-3.5 pt-2">
+                  <div className="flex items-start gap-3">
+                    <CheckCircle2 className="w-5 h-5 text-positive shrink-0 mt-0.5" />
+                    <p className="text-sm text-ink font-medium leading-relaxed">
+                      Zero guessing on customer urgency with rule-based mathematical qualification.
+                    </p>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <CheckCircle2 className="w-5 h-5 text-positive shrink-0 mt-0.5" />
+                    <p className="text-sm text-ink font-medium leading-relaxed">
+                      Instant WhatsApp response drafts tailored to Whitefield, Sarjapur, and Hebbal projects.
+                    </p>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <CheckCircle2 className="w-5 h-5 text-positive shrink-0 mt-0.5" />
+                    <p className="text-sm text-ink font-medium leading-relaxed">
+                      Safe from prompt injection attacks: customer inquiry text is strictly untrusted input.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="pt-4">
+                  <Link
+                    href="/workspace"
+                    className="inline-flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-semibold bg-brand text-brand-fg hover:opacity-90 transition-opacity shadow-xs"
+                  >
+                    <span>Launch Sales Workspace</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </Link>
+                </div>
+              </div>
+
+              {/* Right Column: Interior Architectural Image with Floating Quote */}
+              <div className="lg:col-span-6 relative">
+                <div className="relative rounded-3xl overflow-hidden shadow-2xl border-2 border-edge group">
+                  <div className="relative aspect-[3/2] w-full">
+                    <Image
+                      src="/images/showcase_interior.jpg"
+                      alt="Modern luxury Bengaluru residence interior"
+                      fill
+                      className="object-cover transition-transform duration-700 group-hover:scale-105"
+                      sizes="(max-width: 1024px) 100vw, 50vw"
+                    />
+                  </div>
+
+                  {/* Floating Testimonial Quote Card */}
+                  <div className="absolute bottom-6 left-6 right-6 p-5 rounded-2xl bg-panel/95 backdrop-blur-md border border-edge shadow-xl">
+                    <Quote className="w-6 h-6 text-brand mb-2 opacity-80" />
+                    <p className="text-sm font-medium text-ink leading-relaxed">
+                      &ldquo;Finally, a way to focus on the right leads and have better first conversations.&rdquo;
+                    </p>
+                    <p className="text-xs text-subtle mt-2 font-semibold">
+                      — Senior Sales Consultant, Bengaluru Luxury Portfolio
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ── INTERACTIVE WORKSPACE PREVIEW & SCORING MODEL ── */}
+        <section id="scoring" className="py-20 lg:py-24 bg-raised/30 border-b border-edge scroll-mt-20 relative">
+          <div id="preview" className="scroll-mt-20" />
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="text-center max-w-3xl mx-auto mb-12">
+              <span className="text-xs font-bold text-brand uppercase tracking-wider mb-2 block">
+                Interactive Workspace Demo · Synthetic Showcase Data
+              </span>
+              <h2 className="text-3xl sm:text-4xl font-extrabold text-ink tracking-tight">
+                Try LeadMotive on Sample Bengaluru Leads
+              </h2>
+              <p className="text-sm text-muted mt-3">
+                Click across the three canonical buyers below to see real-time score factor contributions and AI next actions.
+              </p>
+            </div>
+
+            {/* Interactive Preview Container */}
+            <div className="rounded-3xl border-2 border-edge bg-panel shadow-xl overflow-hidden">
               {/* Lead Selector Tabs */}
-              <div className="inline-flex p-1 rounded-lg bg-panel border border-edge mt-6 shadow-xs max-w-full overflow-x-auto">
-                {previewLeads.map((lead) => {
-                  const isSelected = lead.id === activeLead.id;
-                  const leadBand = lead.priority.band;
+              <div className="flex border-b border-edge divide-x divide-edge overflow-x-auto bg-raised/40">
+                {previewLeads.map((l) => {
+                  const isSelected = l.id === selectedLeadId;
                   return (
                     <button
-                      key={lead.id}
-                      onClick={() => setSelectedLeadId(lead.id)}
-                      className={`px-3.5 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-2 whitespace-nowrap ${
-                        isSelected
-                          ? "bg-brand text-accent shadow-xs"
-                          : "text-muted hover:text-ink hover:bg-raised"
-                      }`}
+                      key={l.id}
+                      onClick={() => setSelectedLeadId(l.id)}
+                      className={`flex-1 min-w-[200px] p-4 text-left transition-all cursor-pointer
+                        ${isSelected ? "bg-panel border-t-2 border-brand" : "hover:bg-raised/60 text-muted"}`}
                     >
-                      <span>{lead.name}</span>
-                      <span
-                        className={`px-1.5 py-0.2 rounded text-[10px] font-mono ${
-                          leadBand === "hot"
-                            ? "bg-danger-fill text-danger font-semibold"
-                            : leadBand === "warm"
-                            ? "bg-warm-fill text-warm"
-                            : "bg-raised text-subtle"
-                        }`}
-                      >
-                        {lead.priority.total}
-                      </span>
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <span className={`text-sm font-bold truncate ${isSelected ? "text-ink" : "text-muted"}`}>
+                          {l.name}
+                        </span>
+                        <span
+                          className={`text-xs font-bold px-2 py-0.5 rounded-full ${PRIORITY_STYLES[l.priority.band].badgeCompactClass}`}
+                        >
+                          {PRIORITY_BAND_LABELS[l.priority.band]} · {l.priority.total}
+                        </span>
+                      </div>
+                      <p className="text-xs text-subtle truncate">
+                        {l.location} · {formatINR(l.budget)}
+                      </p>
                     </button>
                   );
                 })}
               </div>
-            </div>
 
-            {/* Preview Workbench Card */}
-            <div className="bg-panel border border-edge rounded-xl shadow-lg overflow-hidden anim-fade-in">
-              {/* Header info bar */}
-              <div className="p-5 border-b border-edge bg-canvas/40 flex flex-wrap items-center justify-between gap-4">
-                <div>
-                  <div className="flex items-center gap-2.5">
-                    <h3 className="text-base font-semibold text-ink">{activeLead.name}</h3>
-                    <span
-                      className="px-2 py-0.5 rounded text-xs font-medium border"
-                      style={{
-                        backgroundColor: bandStyle.bg,
-                        color: bandStyle.text,
-                        borderColor: bandStyle.border,
-                      }}
-                    >
-                      {bandStyle.label} ({activeLead.priority.total}/100)
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-3 mt-1.5 text-xs text-subtle">
-                    <span className="flex items-center gap-1">
-                      <MapPin className="w-3.5 h-3.5 text-muted" />
-                      {activeLead.location}
-                    </span>
-                    <span>•</span>
-                    <span>{activeLead.propertyRequirement}</span>
-                    <span>•</span>
-                    <span className="font-mono font-medium text-ink">
-                      {activeLead.budget > 0 ? formatINR(activeLead.budget) : "Budget unstated"}
-                    </span>
-                    <span>•</span>
-                    <span className="flex items-center gap-1">
-                      <Clock className="w-3.5 h-3.5 text-muted" />
-                      {formatTimeline(activeLead.buyingTimeline)}
-                    </span>
-                  </div>
-                </div>
-
-                <Link
-                  href="/workspace"
-                  className="px-3 py-1.5 rounded-md text-xs font-medium bg-raised text-ink hover:bg-edge transition-colors flex items-center gap-1.5"
-                >
-                  <span>Open in Workspace</span>
-                  <ExternalLink className="w-3.5 h-3.5 text-subtle" />
-                </Link>
-              </div>
-
-              {/* Grid content */}
-              <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-edge">
-                {/* Column 1: Customer Evidence + 4-Factor Score Breakdown */}
-                <div className="p-5 space-y-4">
-                  <div>
-                    <span className="text-[11px] font-mono uppercase tracking-wider text-subtle block mb-1.5">
-                      Customer Inbound Message (Evidence)
-                    </span>
-                    <blockquote className="p-3 rounded-lg bg-raised/40 border border-edge text-xs leading-relaxed text-ink italic font-serif">
-                      &ldquo;{activeLead.customerMessage}&rdquo;
-                    </blockquote>
-                  </div>
-
-                  {/* 4-Factor Progress Bars */}
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-[11px] font-mono uppercase tracking-wider text-subtle">
-                        Deterministic 4-Factor Rubric
+              {/* Lead Preview Body */}
+              <div className="p-6 lg:p-8 space-y-6">
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                  {/* Left 7 cols: Lead inquiry & recommendation */}
+                  <div className="lg:col-span-7 space-y-5">
+                    <div className="p-4 rounded-xl bg-canvas border border-edge">
+                      <span className="text-xs font-bold text-subtle uppercase tracking-wider block mb-2">
+                        Customer Message
                       </span>
-                      <button
-                        onClick={() => setShowMathDetails(!showMathDetails)}
-                        className="text-[11px] text-accent hover:underline flex items-center gap-0.5"
-                      >
-                        <span>{showMathDetails ? "Hide audit" : "Inspect math"}</span>
-                        {showMathDetails ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                      </button>
+                      <blockquote className="text-sm text-ink italic leading-relaxed">
+                        &ldquo;{activeLead.customerMessage}&rdquo;
+                      </blockquote>
                     </div>
 
-                    <div className="space-y-2.5">
-                      {activeLead.priority.factors.map((factor) => {
-                        const pct = Math.round((factor.points / factor.maxPoints) * 100);
-                        return (
-                          <div key={factor.name} className="space-y-1">
-                            <div className="flex justify-between text-xs">
-                              <span className="font-medium text-ink">{factor.label}</span>
-                              <span className="font-mono text-muted">
-                                {factor.points} <span className="text-subtle">/ {factor.maxPoints} pts</span>
-                              </span>
-                            </div>
-                            <div className="h-1.5 bg-raised rounded-full overflow-hidden">
-                              <div
-                                className="h-full bg-brand rounded-full transition-all duration-normal"
-                                style={{ width: `${pct}%` }}
-                              />
-                            </div>
-                            {showMathDetails && (
-                              <p className="text-[10px] text-subtle italic">{factor.reason}</p>
-                            )}
-                          </div>
-                        );
-                      })}
+                    <div className="p-5 rounded-2xl border-2 border-brand/40 bg-raised/50 shadow-xs">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Target className="w-4 h-4 text-brand" />
+                        <span className="text-xs font-bold text-brand uppercase tracking-wider">
+                          Recommended Action ({activeLead.analysis?.recommendedAction.timeframe})
+                        </span>
+                      </div>
+                      <p className="text-base font-semibold text-ink leading-relaxed">
+                        {activeLead.analysis?.recommendedAction.description}
+                      </p>
                     </div>
-                  </div>
-                </div>
 
-                {/* Column 2: AI Analysis & Action */}
-                <div className="p-5 space-y-4">
-                  {/* Analysis Summary */}
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-[11px] font-mono uppercase tracking-wider text-accent font-semibold flex items-center gap-1">
-                        <Sparkles className="w-3 h-3" /> AI Intent Synthesis
-                      </span>
-                      <span className="text-[10px] font-mono text-subtle">
-                        Confidence: {Math.round((activeLead.analysis?.intentConfidence || 0.85) * 100)}%
-                      </span>
-                    </div>
-                    <p className="text-xs text-muted leading-relaxed">
-                      {activeLead.analysis?.summary}
-                    </p>
-                  </div>
-
-                  {/* Objections */}
-                  <div>
-                    <span className="text-[11px] font-mono uppercase tracking-wider text-subtle block mb-1.5">
-                      Extracted Customer Objections
-                    </span>
-                    <div className="space-y-1.5">
-                      {activeLead.analysis?.objections.map((obj, i) => (
-                        <div
-                          key={i}
-                          className="px-2.5 py-1.5 rounded-md bg-raised/50 border border-edge flex items-center justify-between text-xs"
+                    {/* WhatsApp Script with Copy */}
+                    <div className="p-4 rounded-xl bg-canvas border border-edge">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-bold text-subtle uppercase tracking-wider">
+                          Personalized Outreach Script
+                        </span>
+                        <button
+                          onClick={() => handleCopy(activeLead.analysis?.suggestedResponse || "", activeLead.id)}
+                          className="text-xs font-semibold text-brand hover:underline flex items-center gap-1 cursor-pointer"
                         >
-                          <span className="text-ink">{obj.label}</span>
-                          <span
-                            className={`text-[10px] font-mono font-medium px-1.5 py-0.2 rounded uppercase ${
-                              obj.severity === "high"
-                                ? "bg-danger-fill text-danger"
-                                : obj.severity === "medium"
-                                ? "bg-warm-fill text-warm"
-                                : "bg-raised text-subtle"
-                            }`}
-                          >
-                            {obj.severity}
-                          </span>
+                          {copiedId === activeLead.id ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                          <span>{copiedId === activeLead.id ? "Copied" : "Copy Script"}</span>
+                        </button>
+                      </div>
+                      <p className="text-xs text-muted font-mono leading-relaxed bg-panel p-3 rounded-lg border border-edge/60">
+                        {activeLead.analysis?.suggestedResponse}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Right 5 cols: Scoring Math Card */}
+                  <div className="lg:col-span-5 p-5 rounded-2xl bg-canvas border border-edge space-y-4">
+                    <div className="flex items-center justify-between border-b border-edge pb-3">
+                      <div>
+                        <span className="text-xs text-subtle uppercase font-semibold">Priority Score</span>
+                        <div className="text-3xl font-extrabold text-ink font-mono mt-0.5">
+                          {activeLead.priority.total} <span className="text-sm text-subtle font-normal">/ 100</span>
+                        </div>
+                      </div>
+                      <div
+                        className={`px-3 py-1 rounded-full text-xs font-bold ${PRIORITY_STYLES[activeLead.priority.band].badgeClass}`}
+                      >
+                        {PRIORITY_BAND_LABELS[activeLead.priority.band]} · {activeLead.priority.total}
+                      </div>
+                    </div>
+
+                    {/* 4 Factors */}
+                    <div className="space-y-3">
+                      {activeLead.priority.factors.map((f) => (
+                        <div key={f.name}>
+                          <div className="flex items-center justify-between text-xs mb-1">
+                            <span className="font-medium text-muted">{f.label}</span>
+                            <span className="font-mono font-bold text-ink">{f.points}/{f.maxPoints}</span>
+                          </div>
+                          <div className="h-1.5 bg-panel rounded-full overflow-hidden border border-edge/40">
+                            <div
+                              className="h-full bg-brand rounded-full transition-all duration-slow"
+                              style={{ width: `${(f.points / f.maxPoints) * 100}%` }}
+                            />
+                          </div>
+                          <p className="text-[10px] text-subtle mt-0.5">{f.reason}</p>
                         </div>
                       ))}
                     </div>
-                  </div>
 
-                  {/* Ready-to-Send Suggested Response */}
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-[11px] font-mono uppercase tracking-wider text-subtle flex items-center gap-1">
-                        <MessageSquare className="w-3 h-3 text-brand" /> Suggested Response
-                      </span>
-                      <button
-                        onClick={() => handleCopy(activeLead.analysis?.suggestedResponse || "", activeLead.id)}
-                        className="text-[11px] text-accent hover:underline flex items-center gap-1"
+                    <div className="pt-3 border-t border-edge/60">
+                      <Link
+                        href={`/workspace?leadId=${activeLead.id}&lead=${activeLead.id}`}
+                        className="w-full py-2.5 rounded-xl text-xs font-semibold bg-brand text-brand-fg hover:opacity-90 transition-opacity flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
                       >
-                        {copiedId === activeLead.id ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                        <span>{copiedId === activeLead.id ? "Copied" : "Copy WhatsApp"}</span>
-                      </button>
-                    </div>
-                    <div className="p-3 rounded-lg bg-raised/60 border border-edge text-xs leading-relaxed text-ink">
-                      {activeLead.analysis?.suggestedResponse}
+                        <span>Open this lead in Workspace</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </Link>
                     </div>
                   </div>
                 </div>
@@ -372,631 +477,66 @@ export function HomePage() {
           </div>
         </section>
 
-        {/* ── How It Works (Workflow Section) ── */}
-        <section id="how-it-works" className="py-16 md:py-20 px-4 sm:px-6 max-w-5xl mx-auto">
-          <div className="text-center mb-12">
-            <span className="text-[11px] font-mono uppercase tracking-wider text-accent font-semibold block mb-1">
-              End-to-End Workflow
-            </span>
-            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-ink">
-              From Inbound Lead to High-Impact Call in Seconds
-            </h2>
-            <p className="text-xs sm:text-sm text-muted mt-2 max-w-xl mx-auto">
-              How SignalDesk eliminates sales friction before the first phone ring.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="p-5 rounded-xl border border-edge bg-panel space-y-2.5">
-              <div className="w-8 h-8 rounded-lg bg-raised flex items-center justify-center font-mono font-bold text-xs text-ink">
-                01
-              </div>
-              <h3 className="text-sm font-semibold text-ink">Structured Intake</h3>
-              <p className="text-xs text-muted leading-relaxed">
-                Capture buyer name, locality, property requirement, budget in Lakhs/Crores, and the raw inquiry message.
-              </p>
-            </div>
-
-            <div className="p-5 rounded-xl border border-edge bg-panel space-y-2.5">
-              <div className="w-8 h-8 rounded-lg bg-raised flex items-center justify-center font-mono font-bold text-xs text-ink">
-                02
-              </div>
-              <h3 className="text-sm font-semibold text-ink">0ms Deterministic Math</h3>
-              <p className="text-xs text-muted leading-relaxed">
-                Instantly scores timeline (35), intent (30), completeness (20), and depth (15) into Hot, Warm, or Cold bands without LLM lag.
-              </p>
-            </div>
-
-            <div className="p-5 rounded-xl border border-edge bg-panel space-y-2.5">
-              <div className="w-8 h-8 rounded-lg bg-raised flex items-center justify-center font-mono font-bold text-xs text-accent bg-accent-subtle">
-                03
-              </div>
-              <h3 className="text-sm font-semibold text-ink">Qualitative AI Synthesis</h3>
-              <p className="text-xs text-muted leading-relaxed">
-                Gemini 3.8 Flash extracts underlying anxieties (A-Khata, RERA delay, price/sqft) and drafts tailored Indian-English responses.
-              </p>
-            </div>
-
-            <div className="p-5 rounded-xl border border-edge bg-panel space-y-2.5">
-              <div className="w-8 h-8 rounded-lg bg-raised flex items-center justify-center font-mono font-bold text-xs text-ink">
-                04
-              </div>
-              <h3 className="text-sm font-semibold text-ink">Rehearse & Close</h3>
-              <p className="text-xs text-muted leading-relaxed">
-                Practice objection handling in the interactive simulator before picking up the phone to lock in site visits.
-              </p>
-            </div>
-          </div>
-        </section>
-
-        {/* ── Signature Feature: Objection Rehearsal ── */}
-        <section id="rehearsal" className="py-16 bg-raised/40 border-y border-edge">
-          <div className="max-w-5xl mx-auto px-4 sm:px-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
-              <div className="space-y-4">
-                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium bg-accent-subtle text-accent border border-accent/20">
-                  <Target className="w-3.5 h-3.5" />
-                  <span>Required Invented Feature</span>
-                </div>
-                <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-ink leading-tight">
-                  Objection Rehearsal: The Sales Flight Simulator
-                </h2>
-                <p className="text-xs sm:text-sm text-muted leading-relaxed">
-                  Most deals are won or lost during the live call when a customer pushes back on pricing, construction delays, or legal approvals.
-                </p>
-                <p className="text-xs sm:text-sm text-muted leading-relaxed">
-                  Instead of dialing cold, sales reps spend 60 seconds roleplaying with the AI playing the customer in-character. The built-in coach simultaneously scores the salesperson&apos;s rebuttal, flags missed opportunities, and suggests high-converting alternatives.
-                </p>
-
-                <div className="pt-2 flex items-center gap-3">
-                  <Link
-                    href="/workspace"
-                    className="px-4 py-2 rounded-md text-xs font-semibold bg-brand text-accent hover:opacity-95 transition-opacity inline-flex items-center gap-1.5"
-                  >
-                    <span>Try Rehearsal in Workspace</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </Link>
-                </div>
-              </div>
-
-              {/* Roleplay UI Mockup */}
-              <div className="bg-panel border border-edge rounded-xl shadow-md p-4 space-y-3">
-                <div className="flex items-center justify-between pb-2 border-b border-edge text-xs">
-                  <span className="font-semibold text-ink flex items-center gap-1.5">
-                    <Target className="w-3.5 h-3.5 text-brand" /> Rehearsal Session: Vikram Nair
-                  </span>
-                  <span className="text-[10px] font-mono text-accent bg-accent-subtle px-2 py-0.5 rounded">
-                    Score: 8/10
-                  </span>
-                </div>
-
-                {/* Chat turns */}
-                <div className="space-y-2 text-xs">
-                  <div className="p-2.5 rounded-lg bg-raised/50 border border-edge text-ink space-y-1">
-                    <span className="text-[10px] font-semibold text-muted block">Salesperson Rebuttal:</span>
-                    <p>&ldquo;I understand price is top of mind, Vikram. But when you evaluate our 82% carpet efficiency, you get 140 sqft more usable living area.&rdquo;</p>
-                  </div>
-
-                  <div className="p-2.5 rounded-lg bg-brand/10 border border-brand/20 text-ink space-y-1">
-                    <span className="text-[10px] font-semibold text-brand block">AI Customer (In-Character):</span>
-                    <p>&ldquo;Fair point on the layout. But what about the handover timeline? Can you guarantee the 2026 possession with a penalty clause?&rdquo;</p>
-                  </div>
-
-                  {/* Coach feedback card */}
-                  <div className="p-3 rounded-lg bg-accent-subtle/40 border border-accent/25 space-y-1.5">
-                    <span className="text-[10px] font-semibold text-accent uppercase tracking-wider block flex items-center gap-1">
-                      <Sparkles className="w-3 h-3" /> Coach Evaluation
-                    </span>
-                    <p className="text-[11px] text-muted">
-                      <strong>Strength:</strong> Reframed headline price into usable carpet efficiency.
-                    </p>
-                    <p className="text-[11px] text-muted">
-                      <strong>Next Move:</strong> Reassure on RERA milestones before offering the site walkthrough.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* ── Signature Capability: Lead Momentum Plan ── */}
-        <section id="momentum" className="py-16 md:py-24 bg-canvas border-b border-edge">
-          <div className="max-w-5xl mx-auto px-4 sm:px-6">
-            <div className="text-center mb-10">
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold bg-accent-subtle text-accent border border-accent/25 mb-3">
-                <Compass className="w-3.5 h-3.5" />
-                <span>DYNAMIC EXECUTION STRATEGY</span>
-              </div>
-              <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-ink">
-                Turn every lead into a plan of action.
-              </h2>
-              <p className="text-xs sm:text-sm text-muted mt-2.5 max-w-2xl mx-auto leading-relaxed">
-                Go beyond a summary. Build a personalised sequence of next steps, customer-specific responses, decision checkpoints and alternatives based on what the buyer actually needs.
-              </p>
-
-              {/* Sample Lead Selector */}
-              <div className="inline-flex p-1.5 rounded-xl bg-panel border border-edge mt-8 shadow-xs max-w-full overflow-x-auto gap-1">
-                {[
-                  { id: "lead-001", name: "Priya Sharma", role: "Hot Lead • 4 Steps", sub: "Fast-Track Site Visit" },
-                  { id: "lead-002", name: "Arjun Reddy", role: "Warm Lead • 6 Steps", sub: "Financing & Loan Pre-Approval" },
-                  { id: "lead-006", name: "Deepak Gowda", role: "Cold Lead • 3 Steps", sub: "Discovery & Callback" },
-                ].map((item) => {
-                  const isSelected = momentumLeadId === item.id;
-                  return (
-                    <button
-                      key={item.id}
-                      onClick={() => {
-                        setMomentumLeadId(item.id);
-                        const firstStep = SEEDED_MOMENTUM_PLANS[item.id]?.steps[0]?.id || null;
-                        setExpandedStepId(firstStep);
-                      }}
-                      className={`px-3.5 py-2 rounded-lg text-left transition-all ${
-                        isSelected
-                          ? "bg-brand text-white shadow-xs"
-                          : "text-muted hover:text-ink hover:bg-raised"
-                      }`}
-                    >
-                      <span className="text-xs font-bold block leading-tight">{item.name}</span>
-                      <span
-                        className={`text-[10px] font-mono block mt-0.5 ${
-                          isSelected ? "text-accent font-semibold" : "text-subtle"
-                        }`}
-                      >
-                        {item.role}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Interactive Plan Showcase */}
-            <div className="rounded-2xl border border-edge bg-panel shadow-sm overflow-hidden anim-fade-up">
-              {/* Plan Header */}
-              <div className="p-5 sm:p-6 border-b border-edge bg-raised/30">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="px-2 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider bg-accent/10 text-accent font-semibold border border-accent/25">
-                        Objective: {activeMomentumPlan.objectiveLabel}
-                      </span>
-                      <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-raised text-muted border border-edge">
-                        v{activeMomentumPlan.planVersion} • Dynamic Length: {activeMomentumPlan.steps.length} Steps
-                      </span>
-                    </div>
-                    <h3 className="text-lg font-bold text-ink">
-                      {activeMomentumPlan.planTitle}
-                    </h3>
-                    <p className="text-xs text-muted mt-1 leading-relaxed max-w-2xl">
-                      {activeMomentumPlan.leadSituationSummary}
-                    </p>
-                  </div>
-
-                  <div className="sm:text-right shrink-0">
-                    <div className="text-xs font-semibold text-ink mb-1 flex items-center sm:justify-end gap-1.5">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-positive" />
-                      <span>
-                        {activeMomentumPlan.steps.filter((s) => s.status === "completed").length} of{" "}
-                        {activeMomentumPlan.steps.length} steps completed
-                      </span>
-                    </div>
-                    <div className="w-48 sm:w-52 h-2 bg-raised rounded-full overflow-hidden border border-edge">
-                      <div
-                        className="h-full bg-brand transition-all duration-500 rounded-full"
-                        style={{
-                          width: `${Math.round(
-                            (activeMomentumPlan.steps.filter((s) => s.status === "completed").length /
-                              activeMomentumPlan.steps.length) *
-                              100
-                          )}%`,
-                        }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Dynamic Steps List */}
-              <div className="p-5 sm:p-6 space-y-3.5 bg-canvas/40">
-                <div className="flex items-center justify-between text-xs text-subtle font-semibold uppercase tracking-wider mb-2">
-                  <span>Sequential Actions (Dynamic Length: {activeMomentumPlan.steps.length} Nodes)</span>
-                  <span className="text-[11px] font-normal lowercase text-muted">Click step to inspect drafts & branches</span>
-                </div>
-
-                <div className="space-y-3">
-                  {activeMomentumPlan.steps.map((st) => {
-                    const isExpanded = expandedStepId === st.id;
-                    const draft = st.communicationDraft;
-
-                    return (
-                      <div
-                        key={st.id}
-                        className={`rounded-xl border transition-all ${
-                          isExpanded ? "border-accent/40 bg-panel shadow-xs" : "border-edge bg-panel/70 hover:border-muted/40"
-                        }`}
-                      >
-                        <div
-                          onClick={() => setExpandedStepId(isExpanded ? null : st.id)}
-                          className="p-3.5 sm:p-4 flex items-start gap-3 cursor-pointer"
-                        >
-                          <div
-                            className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 font-mono text-xs font-bold mt-0.5 ${
-                              st.status === "completed"
-                                ? "bg-emerald-600 text-white"
-                                : "bg-raised text-ink"
-                            }`}
-                          >
-                            {st.status === "completed" ? <Check className="w-4 h-4 stroke-[3]" /> : st.sequence}
-                          </div>
-
-                          <div className="flex-1 min-w-0">
-                            <div className="flex flex-wrap items-center gap-2 mb-0.5">
-                              <span className="px-2 py-0.2 rounded text-[10px] font-semibold uppercase tracking-wider bg-raised text-muted border border-edge">
-                                {st.category.replace(/_/g, " ")}
-                              </span>
-                              <span className="text-[11px] text-muted font-mono flex items-center gap-1">
-                                <Clock className="w-3 h-3 text-subtle" />
-                                {st.timing}
-                              </span>
-                              <span className={`px-1.5 py-0.2 rounded text-[10px] font-bold uppercase tracking-wider ${
-                                st.status === "completed"
-                                  ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400"
-                                  : "bg-raised text-muted"
-                              }`}>
-                                {st.status}
-                              </span>
-                            </div>
-                            <h4 className="text-xs sm:text-sm font-semibold text-ink">{st.title}</h4>
-                            <p className="text-xs text-muted mt-0.5">{st.purpose}</p>
-                          </div>
-
-                          <div className="w-6 h-6 flex items-center justify-center text-muted shrink-0 mt-1">
-                            {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                          </div>
-                        </div>
-
-                        {/* Expanded details */}
-                        {isExpanded && (
-                          <div className="px-4 sm:px-5 pb-4 pt-1 border-t border-divider space-y-3.5 text-xs anim-fade-in">
-                            <div className="pt-2">
-                              <span className="text-[10px] font-semibold text-subtle uppercase tracking-wider block mb-1">
-                                Action Instructions
-                              </span>
-                              <p className="text-ink leading-relaxed">{st.instructions}</p>
-                            </div>
-
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                              <div className="p-2.5 rounded-lg bg-raised/40 border border-edge">
-                                <span className="text-[10px] font-semibold text-subtle uppercase tracking-wider block mb-0.5">
-                                  Strategic Rationale
-                                </span>
-                                <p className="text-muted text-[11px]">{st.rationale}</p>
-                              </div>
-
-                              <div className="p-2.5 rounded-lg bg-raised/40 border border-edge">
-                                <span className="text-[10px] font-semibold text-subtle uppercase tracking-wider block mb-0.5">
-                                  Customer Evidence
-                                </span>
-                                <ul className="text-[11px] text-muted space-y-0.5">
-                                  {st.supportingEvidence.map((ev, i) => (
-                                    <li key={i} className="truncate">• &ldquo;{ev}&rdquo;</li>
-                                  ))}
-                                </ul>
-                              </div>
-                            </div>
-
-                            {/* Communication Draft if present */}
-                            {draft && (
-                              <div className="p-3.5 rounded-xl border border-accent/30 bg-accent/[0.03]">
-                                <div className="flex items-center justify-between mb-1.5">
-                                  <div className="flex items-center gap-1.5">
-                                    <MessageSquare className="w-3.5 h-3.5 text-accent" />
-                                    <span className="font-semibold text-ink text-xs uppercase tracking-wider">
-                                      Personalized {draft.channel} Draft
-                                    </span>
-                                  </div>
-                                  <button
-                                    onClick={() => handleCopy(draft.draft, st.id)}
-                                    className="px-2.5 py-1 text-xs font-semibold text-brand hover:opacity-80 transition-opacity rounded border border-edge bg-canvas shadow-2xs flex items-center gap-1"
-                                  >
-                                    {copiedId === st.id ? <Check className="w-3 h-3 text-positive" /> : <Copy className="w-3 h-3" />}
-                                    <span>{copiedId === st.id ? "Copied" : "Copy draft"}</span>
-                                  </button>
-                                </div>
-                                <div className="p-2.5 bg-canvas rounded-lg border border-divider text-ink leading-relaxed whitespace-pre-wrap text-xs">
-                                  {draft.draft}
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Decision Branches */}
-                            {st.decisionBranches && st.decisionBranches.length > 0 && (
-                              <div>
-                                <span className="text-[10px] font-semibold text-subtle uppercase tracking-wider block mb-1.5">
-                                  Conditional Decision Branches
-                                </span>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                  {st.decisionBranches.map((br, bIdx) => (
-                                    <div key={bIdx} className="p-2.5 rounded-lg bg-canvas border border-edge text-[11px]">
-                                      <div className="flex items-center justify-between mb-0.5">
-                                        <span className="font-semibold text-ink">IF: {br.condition}</span>
-                                        <span className="px-1.5 py-0.2 rounded text-[9px] font-bold uppercase tracking-wider bg-raised text-muted border border-edge">
-                                          {br.planImpact}
-                                        </span>
-                                      </div>
-                                      <p className="text-muted mt-0.5">Then: {br.recommendedAction}</p>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Bottom CTA to launch workspace */}
-                <div className="pt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-edge">
-                  <span className="text-xs text-muted">
-                    Demonstration plan based on canonical Bengaluru buyer data.
-                  </span>
-                  <Link
-                    href={`/workspace/momentum?lead=${momentumLeadId}`}
-                    className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand text-accent hover:opacity-95 transition-opacity inline-flex items-center gap-1.5 shadow-xs shrink-0 self-start sm:self-auto"
-                  >
-                    <span>Explore Momentum Plan in Workspace</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </Link>
-                </div>
-              </div>
-            </div>
-
-            {/* ── 5 Core System Capabilities Distinction Grid ── */}
-            <div className="mt-14 pt-10 border-t border-edge">
-              <div className="text-center mb-8">
-                <span className="text-[11px] font-mono uppercase tracking-wider text-accent font-semibold block mb-1">
-                  Architecture Clarity
-                </span>
-                <h3 className="text-xl sm:text-2xl font-bold text-ink">
-                  Five Distinct Roles in the SignalDesk Engine
-                </h3>
-                <p className="text-xs text-muted max-w-xl mx-auto mt-1">
-                  Each capability solves a specific step in the salesperson&apos;s workflow without blurring into a generic chat interface.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
-                <div className="p-4 rounded-xl border border-edge bg-panel space-y-1.5">
-                  <div className="flex items-center gap-2 text-ink font-semibold text-xs">
-                    <Sparkles className="w-4 h-4 text-accent" />
-                    <span>1. AI Lead Analysis</span>
-                  </div>
-                  <p className="text-[11px] text-muted leading-relaxed">
-                    Unpacks messy inbound messages into verified requirements, customer intent, and hidden objections.
-                  </p>
-                </div>
-
-                <div className="p-4 rounded-xl border border-edge bg-panel space-y-1.5">
-                  <div className="flex items-center gap-2 text-ink font-semibold text-xs">
-                    <Zap className="w-4 h-4 text-warm" />
-                    <span>2. Deterministic 4-Factor Scoring</span>
-                  </div>
-                  <p className="text-[11px] text-muted leading-relaxed">
-                    0ms mathematical contract assigning 100 points across Timeline, Intent, Requirements, and Depth with zero LLM lag.
-                  </p>
-                </div>
-
-                <div className="p-4 rounded-xl border border-edge bg-panel space-y-1.5">
-                  <div className="flex items-center gap-2 text-ink font-semibold text-xs">
-                    <MessageCircle className="w-4 h-4 text-blue-500" />
-                    <span>3. Contextual AI Coach</span>
-                  </div>
-                  <p className="text-[11px] text-muted leading-relaxed">
-                    On-demand sales coach answering rep questions grounded strictly in the current lead&apos;s dossier.
-                  </p>
-                </div>
-
-                <div className="p-4 rounded-xl border-2 border-accent/40 bg-accent/[0.04] space-y-1.5">
-                  <div className="flex items-center gap-2 text-ink font-bold text-xs">
-                    <Compass className="w-4 h-4 text-accent" />
-                    <span>4. Lead Momentum Plan</span>
-                  </div>
-                  <p className="text-[11px] text-muted leading-relaxed">
-                    Personalized, dynamic-length execution roadmap with drafted scripts, contingency branches, and progress tracking.
-                  </p>
-                </div>
-
-                <div className="p-4 rounded-xl border border-edge bg-panel space-y-1.5 sm:col-span-2 lg:col-span-2">
-                  <div className="flex items-center gap-2 text-ink font-semibold text-xs">
-                    <Target className="w-4 h-4 text-danger" />
-                    <span>5. Objection Rehearsal</span>
-                  </div>
-                  <p className="text-[11px] text-muted leading-relaxed">
-                    Flight-simulator roleplay where the AI plays the resistant buyer so sales reps can sharpen their pitch before dialing live.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* ── 4-Factor Scoring Breakdown ── */}
-        <section id="scoring" className="py-16 md:py-20 px-4 sm:px-6 max-w-5xl mx-auto">
-          <div className="text-center mb-12">
-            <span className="text-[11px] font-mono uppercase tracking-wider text-accent font-semibold block mb-1">
-              Transparent Prioritisation
-            </span>
-            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-ink">
-              The 100-Point Scoring Contract
-            </h2>
-            <p className="text-xs sm:text-sm text-muted mt-2 max-w-xl mx-auto">
-              Auditable, predictable, and explainable to non-technical buyers.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-            <div className="p-4 rounded-xl border border-edge bg-panel space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-ink">Buying Timeline</span>
-                <span className="font-mono text-xs font-bold text-accent">35 pts</span>
-              </div>
-              <p className="text-[11px] text-muted leading-relaxed">
-                Immediate closes earn maximum points; distant exploratory inquiries are scaled down.
-              </p>
-            </div>
-
-            <div className="p-4 rounded-xl border border-edge bg-panel space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-ink">Explicit Buying Intent</span>
-                <span className="font-mono text-xs font-bold text-accent">30 pts</span>
-              </div>
-              <p className="text-[11px] text-muted leading-relaxed">
-                Stated budget volume paired with explicit transaction, booking, or loan approval signals.
-              </p>
-            </div>
-
-            <div className="p-4 rounded-xl border border-edge bg-panel space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-ink">Requirement Completeness</span>
-                <span className="font-mono text-xs font-bold text-accent">20 pts</span>
-              </div>
-              <p className="text-[11px] text-muted leading-relaxed">
-                Verified Bengaluru micro-market (Whitefield, Sarjapur, etc.) + clear unit typology.
-              </p>
-            </div>
-
-            <div className="p-4 rounded-xl border border-edge bg-panel space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-ink">Engagement Depth</span>
-                <span className="font-mono text-xs font-bold text-accent">15 pts</span>
-              </div>
-              <p className="text-[11px] text-muted leading-relaxed">
-                Communicative substance, investigative questions, and personal/commute context.
-              </p>
-            </div>
-          </div>
-
-          {/* Priority Bands */}
-          <div className="p-4 rounded-xl border border-edge bg-raised/30 flex flex-wrap items-center justify-around gap-4 text-center">
-            <div className="flex items-center gap-2">
-              <Flame className="w-4 h-4 text-danger" />
-              <div className="text-left">
-                <span className="text-xs font-semibold text-ink block">Hot Leads (75–100)</span>
-                <span className="text-[11px] text-subtle">Call within 15 minutes</span>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Zap className="w-4 h-4 text-warm" />
-              <div className="text-left">
-                <span className="text-xs font-semibold text-ink block">Warm Leads (45–74)</span>
-                <span className="text-[11px] text-subtle">Follow up within 2 hours</span>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Snowflake className="w-4 h-4 text-subtle" />
-              <div className="text-left">
-                <span className="text-xs font-semibold text-ink block">Cold Leads (0–44)</span>
-                <span className="text-[11px] text-subtle">Automated nurture drip</span>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* ── Trust & Evidence Section ── */}
-        <section id="trust" className="py-16 bg-panel border-t border-edge">
-          <div className="max-w-5xl mx-auto px-4 sm:px-6">
-            <div className="text-center mb-10">
-              <span className="text-[11px] font-mono uppercase tracking-wider text-accent font-semibold block mb-1">
-                Transparency & Guardrails
-              </span>
-              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-ink">
-                Distinguishing Customer Evidence from AI Interpretation
-              </h2>
-              <p className="text-xs sm:text-sm text-muted mt-2 max-w-xl mx-auto">
-                Real-estate buyers and sales managers need to know what the customer actually said versus what the model inferred.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="p-5 rounded-xl border border-edge bg-canvas/40 space-y-3">
-                <div className="flex items-center gap-2">
-                  <ShieldCheck className="w-4 h-4 text-brand" />
-                  <h3 className="text-sm font-semibold text-ink">Customer Evidence (Ground Truth)</h3>
-                </div>
-                <ul className="text-xs text-muted space-y-2">
-                  <li className="flex items-start gap-2">
-                    <span className="text-accent">•</span>
-                    <span>Exact raw customer message preserved verbatim without alteration.</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="text-accent">•</span>
-                    <span>Stated budget number and declared buying timeline.</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="text-accent">•</span>
-                    <span>Explicitly declared family constraints or school preferences.</span>
-                  </li>
-                </ul>
-              </div>
-
-              <div className="p-5 rounded-xl border border-edge bg-canvas/40 space-y-3">
-                <div className="flex items-center gap-2">
-                  <Bot className="w-4 h-4 text-accent" />
-                  <h3 className="text-sm font-semibold text-ink">AI Interpretation (Hypothesis)</h3>
-                </div>
-                <ul className="text-xs text-muted space-y-2">
-                  <li className="flex items-start gap-2">
-                    <span className="text-brand">•</span>
-                    <span>Classified buying intent category with calculated confidence score.</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="text-brand">•</span>
-                    <span>Extracted objections tagged with severity levels (high/medium/low).</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="text-brand">•</span>
-                    <span>Recommended response scripts and optimal deal velocity touchpoints.</span>
-                  </li>
-                </ul>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* ── Final CTA Section ── */}
-        <section className="py-20 px-4 sm:px-6 max-w-4xl mx-auto text-center">
-          <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-ink mb-4">
-            Ready to Explore the Workspace?
+        {/* ── FINAL CTA SECTION ── */}
+        <section className="py-20 lg:py-24 px-4 sm:px-6 max-w-4xl mx-auto text-center">
+          <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-ink mb-4">
+            Ready to Accelerate Your Sales Pipeline?
           </h2>
-          <p className="text-sm text-muted max-w-lg mx-auto mb-8">
-            Open SignalDesk to review the lead queue, run re-analyses, inspect scoring factors, and practice objection handling.
+          <p className="text-base text-muted max-w-xl mx-auto mb-8 leading-relaxed">
+            Open LeadMotive to review the inbound lead queue, run live Gemini 3.5 Flash Lite analyses, inspect deterministic scoring, and practice objection conversations.
           </p>
           <Link
             href="/workspace"
-            className="px-6 py-3 rounded-lg text-sm font-semibold bg-brand text-accent hover:opacity-95 transition-all shadow-md inline-flex items-center gap-2"
+            className="px-8 py-4 rounded-xl text-base font-bold bg-brand text-brand-fg hover:opacity-90 transition-all shadow-lg inline-flex items-center gap-2 cursor-pointer active:scale-95"
           >
-            <span>Open Workspace (No Login Required)</span>
-            <ArrowRight className="w-4 h-4" />
+            <span>Launch LeadMotive Workspace</span>
+            <ArrowRight className="w-5 h-5" />
           </Link>
         </section>
       </main>
 
-      {/* ── Footer ── */}
-      <footer className="py-8 border-t border-edge bg-panel text-xs text-subtle">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <span className="font-semibold text-ink">SignalDesk</span>
-            <span>•</span>
-            <span>Bengaluru Real Estate Sales Intelligence</span>
+      {/* ── FOOTER (With Tharun P & run40081@gmail.com Credit) ── */}
+      <footer className="py-12 border-t border-edge bg-panel text-xs text-subtle transition-colors">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-6 pb-6 border-b border-edge/60">
+            {/* Logo & Descriptor */}
+            <div className="flex flex-col items-center md:items-start gap-1">
+              <LeadMotiveLogo size="md" />
+              <p className="text-xs text-muted mt-1">
+                AI-Powered Real Estate Lead Intelligence
+              </p>
+            </div>
+
+            {/* Quick Links */}
+            <div className="flex flex-wrap items-center justify-center gap-6 text-xs font-medium text-muted">
+              <a href="#features" onClick={scrollToSection("features")} className="hover:text-ink transition-colors">Product</a>
+              <a href="#how-it-works" onClick={scrollToSection("how-it-works")} className="hover:text-ink transition-colors">How it works</a>
+              <a href="#scoring" onClick={scrollToSection("scoring")} className="hover:text-ink transition-colors">Scoring Model</a>
+              <Link href="/workspace" className="text-brand font-semibold hover:underline">
+                Open Workspace
+              </Link>
+            </div>
           </div>
 
-          <div className="text-center md:text-right max-w-md">
-            <p className="text-[11px] leading-relaxed">
-              <strong>Synthetic Data Disclaimer:</strong> All buyer records, properties, and message inquiries are fictional and generated for demonstration and evaluation.
-            </p>
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
+            {/* Creator Credit with mailto */}
+            <div className="flex items-center gap-2 text-xs text-muted">
+              <span>Created by <strong className="text-ink font-semibold">Tharun P</strong></span>
+              <span>·</span>
+              <a
+                href="mailto:run40081@gmail.com"
+                className="text-brand hover:underline font-mono font-medium"
+              >
+                run40081@gmail.com
+              </a>
+            </div>
+
+            {/* Copyright & Disclaimer */}
+            <div className="text-[11px] text-subtle max-w-md">
+              <p>
+                © 2026 LeadMotive. All buyer records, properties, and message inquiries are fictional synthetic demonstrations.
+              </p>
+            </div>
           </div>
         </div>
       </footer>

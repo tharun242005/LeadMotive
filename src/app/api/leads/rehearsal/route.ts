@@ -22,6 +22,8 @@ export async function POST(req: NextRequest) {
     }
 
     const mode: RehearsalMode = body.mode === "coach" ? "coach" : "roleplay";
+    const scenarioType = body.scenarioType === "immediate_buyer" ? "immediate_buyer" : "documented_concern";
+    const isHypothetical = Boolean(body.isHypothetical);
     const rawMessage = typeof body.message === "string" ? body.message.trim() : "";
 
     const boundedContext = {
@@ -46,6 +48,12 @@ export async function POST(req: NextRequest) {
         ? {
             summary: typeof body.leadContext.analysis.summary === "string" ? body.leadContext.analysis.summary.slice(0, 500) : undefined,
             intent: typeof body.leadContext.analysis.intent === "string" ? body.leadContext.analysis.intent.slice(0, 50) : undefined,
+            recommendedAction: body.leadContext.analysis.recommendedAction && typeof body.leadContext.analysis.recommendedAction === "object"
+              ? {
+                  description: String(body.leadContext.analysis.recommendedAction.description || "").slice(0, 200),
+                  timeframe: String(body.leadContext.analysis.recommendedAction.timeframe || "").slice(0, 100),
+                }
+              : undefined,
           }
         : null,
     };
@@ -81,7 +89,9 @@ export async function POST(req: NextRequest) {
       boundedHistory,
       Boolean(body.includeFeedback),
       mode,
-      targetObjection
+      targetObjection,
+      scenarioType,
+      isHypothetical
     );
 
     return NextResponse.json(response);

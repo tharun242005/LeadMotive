@@ -15,22 +15,19 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "SignalDesk — Real Estate Lead Intelligence",
-    template: "%s | SignalDesk",
+    default: "LeadMotive — AI-Powered Real Estate Lead Intelligence",
+    template: "%s | LeadMotive",
   },
   description:
-    "SignalDesk helps real-estate salespeople prioritise inbound leads, " +
-    "understand customer intent, and act with AI-powered analysis, " +
-    "contextual coaching, and objection rehearsal. " +
-    "Built for the Bengaluru property market. All data is synthetic.",
+    "Know which buyer to move next. Know what to say. LeadMotive empowers real estate sales teams to prioritise high-intent buyers, extract key requirements with AI, and accelerate deal closures.",
   keywords: [
-    "SignalDesk",
+    "LeadMotive",
     "real estate",
     "lead intelligence",
     "Bengaluru",
-    "AI",
-    "sales",
+    "AI sales coach",
     "lead scoring",
+    "objection rehearsal",
   ],
   robots: "noindex, nofollow",
 };
@@ -47,7 +44,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
       <body className="h-full">
-        <a href="#main-content" className="skip-link">
+        <a
+          href="#main-content"
+          className="skip-link sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-brand focus:text-brand-fg focus:rounded-lg focus:shadow-lg focus:outline-2 focus:outline-accent"
+        >
           Skip to main content
         </a>
         <ThemeProvider>{children}</ThemeProvider>

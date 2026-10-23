@@ -314,3 +314,191 @@ test("generateFallbackRehearsal: penalises lack of empathy and missing CTA in co
   const ctaDim = debrief.feedback.dimensions.find((d) => d.dimension === "next_step_drive");
   assert.ok(ctaDim && ctaDim.score <= 2);
 });
+
+// ---------------------------------------------------------------------------
+// 4. Immediate Buyer Practice Scenario Tests
+// ---------------------------------------------------------------------------
+
+test("buildRehearsalBuyerPrompt: generates Immediate Buyer scenario instructions and tags hypothetical when intent unconfirmed", () => {
+  // Test confirmed immediate intent
+  const confirmedPrompt = buildRehearsalBuyerPrompt(
+    ARJUN_LEAD,
+    undefined,
+    "",
+    [],
+    "immediate_buyer",
+    false
+  );
+  assert.ok(confirmedPrompt.includes("Immediate Buyer — Ready to Move Forward"));
+  assert.ok(confirmedPrompt.includes("confirmed high buying intent"));
+  assert.ok(confirmedPrompt.includes("Arjun Reddy"));
+  assert.ok(confirmedPrompt.includes("Sarjapur Road"));
+  assert.ok(confirmedPrompt.includes("₹65 Lakhs"));
+
+  // Test hypothetical intent for exploratory lead
+  const hypotheticalPrompt = buildRehearsalBuyerPrompt(
+    PRIYA_LEAD,
+    undefined,
+    "",
+    [],
+    "immediate_buyer",
+    true
+  );
+  assert.ok(hypotheticalPrompt.includes("Immediate Buyer — Ready to Move Forward"));
+  assert.ok(hypotheticalPrompt.includes("HYPOTHETICAL practice scenario"));
+  assert.ok(hypotheticalPrompt.includes("Priya Sharma"));
+  assert.ok(hypotheticalPrompt.includes("Whitefield"));
+});
+
+test("buildRehearsalCoachingPrompt: configures rubric for Immediate Buyer practice with non-prediction disclaimer", () => {
+  const prompt = buildRehearsalCoachingPrompt(
+    ARJUN_LEAD,
+    undefined,
+    [
+      { role: "customer", content: "Can we visit this Sunday morning?" },
+      { role: "salesperson", content: "Yes, Sunday 10:30 AM is reserved for you." },
+    ],
+    "immediate_buyer",
+    false
+  );
+
+  assert.ok(prompt.includes("Immediate Buyer Practice"));
+  assert.ok(prompt.includes("Responsiveness & Requirement Handling"));
+  assert.ok(prompt.includes("Call-to-Action & Next Step"));
+  assert.ok(prompt.includes("do not predict commercial conversion"));
+});
+
+test("generateFallbackRehearsal: Immediate Buyer practice for Priya begins with site walkthrough request", () => {
+  const result = generateFallbackRehearsal(
+    "",
+    PRIYA_LEAD,
+    [],
+    false,
+    "roleplay",
+    undefined,
+    "immediate_buyer",
+    true
+  );
+
+  assert.equal(result.mode, "roleplay");
+  assert.equal(result.scenarioType, "immediate_buyer");
+  assert.ok(result.customerReply.includes("shortlisted 3 BHK options in Whitefield"));
+  assert.ok(result.customerReply.includes("private walkthrough this Saturday at 11:00 AM"));
+});
+
+test("generateFallbackRehearsal: Immediate Buyer practice for Arjun with financial concern asks about immediate-possession within budget", () => {
+  const result = generateFallbackRehearsal(
+    "",
+    ARJUN_LEAD,
+    [],
+    false,
+    "roleplay",
+    undefined,
+    "immediate_buyer",
+    false
+  );
+
+  assert.equal(result.mode, "roleplay");
+  assert.equal(result.scenarioType, "immediate_buyer");
+  assert.ok(result.customerReply.includes("Sarjapur Road"));
+  assert.ok(result.customerReply.includes("immediate-possession"));
+  assert.ok(result.customerReply.includes("₹65 Lakh"));
+});
+
+test("generateFallbackRehearsal: Immediate Buyer practice with no objections launches valid simulation", () => {
+  const leadWithNoObjections = {
+    name: "Kavita Rao",
+    location: "Koramangala",
+    propertyRequirement: "3 BHK Penthouse",
+    budget: 25000000,
+    buyingTimeline: "immediate",
+    customerMessage: "Ready to move in next month. Please arrange viewing for 3 BHK penthouse.",
+    objections: [],
+  };
+
+  const result = generateFallbackRehearsal(
+    "",
+    leadWithNoObjections,
+    [],
+    false,
+    "roleplay",
+    undefined,
+    "immediate_buyer",
+    false
+  );
+
+  assert.equal(result.mode, "roleplay");
+  assert.equal(result.scenarioType, "immediate_buyer");
+  assert.ok(result.customerReply.includes("3 BHK Penthouse"));
+  assert.ok(result.customerReply.includes("Koramangala"));
+  assert.ok(result.customerReply.includes("immediate inspection this weekend"));
+});
+
+test("generateFallbackRehearsal: Immediate Buyer responds dynamically to salesperson responses", () => {
+  const history = [
+    { role: "customer", content: "Can we schedule a private walkthrough this Saturday at 11:00 AM?" },
+  ];
+
+  const salespersonReply = "Saturday at 11 AM is confirmed! I will personally meet you at Gate 1.";
+  const followUp = generateFallbackRehearsal(
+    salespersonReply,
+    PRIYA_LEAD,
+    [...history, { role: "salesperson", content: salespersonReply }],
+    false,
+    "roleplay",
+    undefined,
+    "immediate_buyer",
+    false
+  );
+
+  assert.equal(followUp.mode, "roleplay");
+  assert.equal(followUp.scenarioType, "immediate_buyer");
+  assert.ok(
+    followUp.customerReply.includes("Saturday at 11:00 AM works perfectly") ||
+    followUp.customerReply.includes("booking advance")
+  );
+});
+
+test("generateFallbackRehearsal: Immediate Buyer coaching debrief evaluates responsiveness and next-step drive without predicting conversion", () => {
+  const history = [
+    { role: "customer", content: "Can we visit this Saturday at 11:00 AM?" },
+    {
+      role: "salesperson",
+      content: "Yes Priya! Saturday at 11:00 AM is confirmed. We will tour the verified 3 BHK tower unit and model flat. Please bring your chequebook or ID so we can reserve your preferred floor immediately.",
+    },
+  ];
+
+  const debrief = generateFallbackRehearsal(
+    "",
+    PRIYA_LEAD,
+    history,
+    true,
+    "coach",
+    undefined,
+    "immediate_buyer",
+    false
+  );
+
+  assert.equal(debrief.mode, "coach");
+  assert.equal(debrief.scenarioType, "immediate_buyer");
+  assert.ok(debrief.feedback);
+  assert.ok(debrief.feedback.score >= 8);
+  assert.equal(debrief.feedback.concernAddressed.addressed, true);
+  assert.equal(debrief.feedback.dimensions.length, 4);
+
+  const dimNames = debrief.feedback.dimensions.map((d) => d.label);
+  assert.ok(dimNames.includes("Responsiveness & Requirement Handling"));
+  assert.ok(dimNames.includes("Call-to-Action & Next Step"));
+
+  assert.ok(debrief.feedback.disclaimer.includes("do not predict commercial closing probability"));
+});
+
+test("validateRehearsalResponse: preserves scenarioType in validated output", () => {
+  const rawRoleplay = {
+    customerReply: "I'm ready to visit this Saturday.",
+    scenarioType: "immediate_buyer",
+  };
+  const validated = validateRehearsalResponse(rawRoleplay, "roleplay", "immediate_buyer");
+  assert.equal(validated.scenarioType, "immediate_buyer");
+  assert.equal(validated.customerReply, "I'm ready to visit this Saturday.");
+});

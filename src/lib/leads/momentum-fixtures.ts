@@ -1,5 +1,5 @@
 // ============================================================================
-// SignalDesk — Canonical Seeded Momentum Plans
+// LeadMotive — Canonical Seeded Momentum Plans
 // ============================================================================
 //
 // Demonstrates genuine variable length, grounded Bengaluru context,
@@ -15,7 +15,7 @@
 import type { LeadMomentumPlan } from "@/types/lead";
 
 export const SEEDED_MOMENTUM_PLANS: Record<string, LeadMomentumPlan> = {
-  // ── 1. Priya Sharma (Hot Lead, 4 Steps, Site Visit Focus) ──
+  // ── 1. Priya Sharma (Act Now Lead, 4 Steps, Site Visit Focus) ──
   "lead-001": {
     planId: "plan-priya-001",
     leadId: "lead-001",
@@ -197,7 +197,7 @@ export const SEEDED_MOMENTUM_PLANS: Record<string, LeadMomentumPlan> = {
     ],
   },
 
-  // ── 2. Arjun Reddy (Warm Lead, 6 Steps, Financing & Loan Focus) ──
+  // ── 2. Arjun Reddy (Follow Up Lead, 6 Steps, Financing & Loan Focus) ──
   "lead-002": {
     planId: "plan-arjun-002",
     leadId: "lead-002",
@@ -252,7 +252,7 @@ export const SEEDED_MOMENTUM_PLANS: Record<string, LeadMomentumPlan> = {
         communicationDraft: {
           channel: "call_script",
           suggestedTone: "Empathetic, clear, and reassuring banking advisory",
-          draft: "Hi Arjun, this is Rahul from SignalDesk. I noticed your note regarding loan eligibility for our Sarjapur 2 BHK. I wanted to reassure you right away — with a ₹90,000 salary, leading banks like SBI and HDFC typically approve loans up to ₹46 Lakhs with an EMI of around ₹37,000 for a 20-year tenure, or ₹33,000 for 25 years. That's well within the 40% comfort zone. We have an in-house banking desk that checks your CIBIL and eligibility for free without impacting your score. Would you like our senior desk specialist to run a quick 5-minute pre-check?",
+          draft: "Hi Arjun, this is Rahul from LeadMotive. I noticed your note regarding loan eligibility for our Sarjapur 2 BHK. I wanted to reassure you right away — with a ₹90,000 salary, leading banks like SBI and HDFC typically approve loans up to ₹46 Lakhs with an EMI of around ₹37,000 for a 20-year tenure, or ₹33,000 for 25 years. That's well within the 40% comfort zone. We have an in-house banking desk that checks your CIBIL and eligibility for free without impacting your score. Would you like our senior desk specialist to run a quick 5-minute pre-check?",
           concernAddressed: "Loan eligibility rejection and unaffordable EMI anxiety.",
           verificationChecklist: [
             "Current SBI repo-linked lending rate (approx 8.45% - 8.65%).",
@@ -402,7 +402,7 @@ export const SEEDED_MOMENTUM_PLANS: Record<string, LeadMomentumPlan> = {
     ],
   },
 
-  // ── 3. Deepak Gowda (Cold Lead, 3 Steps, Discovery & Qualification Focus) ──
+  // ── 3. Deepak Gowda (Nurture Lead, 3 Steps, Discovery & Qualification Focus) ──
   "lead-006": {
     planId: "plan-deepak-006",
     leadId: "lead-006",
@@ -456,7 +456,7 @@ export const SEEDED_MOMENTUM_PLANS: Record<string, LeadMomentumPlan> = {
         communicationDraft: {
           channel: "call_script",
           suggestedTone: "Professional, attentive, and exploratory",
-          draft: "Hello Deepak, this is Vikram from SignalDesk returning your callback request regarding 4 BHK homes in Yelahanka. We have two distinctive projects in that corridor — one is luxury golf-facing apartments starting at ₹2.1 Cr, and the other is exclusive gated villas near Kogilu starting around ₹3.2 Cr. To make sure I share the most relevant floor plans, what budget range and timeline were you envisioning for this move?",
+          draft: "Hello Deepak, this is Vikram from LeadMotive returning your callback request regarding 4 BHK homes in Yelahanka. We have two distinctive projects in that corridor — one is luxury golf-facing apartments starting at ₹2.1 Cr, and the other is exclusive gated villas near Kogilu starting around ₹3.2 Cr. To make sure I share the most relevant floor plans, what budget range and timeline were you envisioning for this move?",
           concernAddressed: "Sparse requirements and unknown budget envelope.",
           verificationChecklist: [
             "Current 4 BHK availability in Yelahanka inventory.",
@@ -473,7 +473,7 @@ export const SEEDED_MOMENTUM_PLANS: Record<string, LeadMomentumPlan> = {
           {
             condition: "Deepak shares budget of ₹2–3 Cr and ready timeline",
             triggerEvidence: "Qualified high-value buyer confirmed.",
-            recommendedAction: "Escalate lead score to Hot and schedule weekend private villa preview.",
+            recommendedAction: "Escalate lead score to Act Now and schedule weekend private villa preview.",
             planImpact: "proceed",
           },
           {

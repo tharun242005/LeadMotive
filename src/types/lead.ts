@@ -1,5 +1,5 @@
 // ============================================================================
-// SignalDesk — Lead Domain Types
+// LeadMotive — Lead Domain Types
 // ============================================================================
 
 /** Unique identifier for a lead record. */
@@ -164,10 +164,12 @@ export interface LeadAnalysis {
   model?: string;
   /** Complete AI execution metadata. */
   meta?: {
-    provider: "google-gemini" | "offline-heuristic";
+    provider: "google-gemini" | "groq" | "offline-heuristic" | "seeded-fixture";
     model: string | null;
-    mode: "live" | "fallback";
+    mode: "live" | "fallback" | "fixture";
     fallbackUsed: boolean;
+    secondaryUsed?: boolean;
+    primaryFailureReason?: string;
     latencyMs: number;
     message?: string;
   };
@@ -190,6 +192,7 @@ export interface CopilotMessage {
   uncertainties?: string[];
   suggestedNextQuestion?: string;
   isError?: boolean;
+  provider?: "google-gemini" | "groq" | "offline-heuristic";
 }
 
 /** Role in an objection rehearsal session. */
@@ -236,11 +239,17 @@ export interface RehearsalFeedback {
   disclaimer?: string;
 }
 
+/** Objection rehearsal scenario type. */
+export type RehearsalScenarioType = "immediate_buyer" | "documented_concern";
+
 /** Full Rehearsal Session state for a lead. */
 export interface RehearsalSession {
   sessionId: string;
   leadId: string;
-  targetObjection: string;
+  scenarioType?: RehearsalScenarioType;
+  scenarioTitle?: string;
+  isHypothetical?: boolean;
+  targetObjection?: string;
   objective: string;
   messages: RehearsalMessage[];
   feedback: RehearsalFeedback | null;
@@ -248,6 +257,7 @@ export interface RehearsalSession {
   startedAt: string;
   updatedAt: string;
 }
+
 
 // ---------------------------------------------------------------------------
 // Lead (Root Entity)
@@ -390,10 +400,12 @@ export interface LeadMomentumPlan {
   updatedAt: string;
   steps: MomentumPlanStep[];
   meta?: {
-    provider: "google-gemini" | "offline-heuristic" | "seeded-fixture";
+    provider: "google-gemini" | "groq" | "offline-heuristic" | "seeded-fixture";
     model: string | null;
     mode: "live" | "fallback" | "fixture";
     fallbackUsed: boolean;
+    secondaryUsed?: boolean;
+    primaryFailureReason?: string;
     latencyMs: number;
     message?: string;
   };

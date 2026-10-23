@@ -20,14 +20,16 @@ import {
 import type { Lead, CopilotMessage } from "@/types/lead";
 import type { ChatResponse, AIErrorResponse } from "@/types/ai";
 import { generateId, truncate, formatINR } from "@/lib/utils/format";
+import { formatPriorityDisplay, normalizeAssistantPriorityText, PRIORITY_STYLES } from "@/lib/leads/scoring";
 
 // ---------------------------------------------------------------------------
 // Props
 // ---------------------------------------------------------------------------
 interface CopilotPanelProps {
   lead: Lead;
-  onClose: () => void;
+  onClose?: () => void;
   onUpdateMessages?: (messages: CopilotMessage[]) => void;
+  isFullPage?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -59,10 +61,10 @@ export function CopilotPanel({ lead, onClose, onUpdateMessages }: CopilotPanelPr
   const band = lead.priority?.band || "warm";
   const priorityQuestion =
     band === "hot"
-      ? "Why is this lead Hot rather than Warm?"
+      ? "Why is this lead Act Now rather than Follow Up?"
       : band === "warm"
-      ? "Why is this lead Warm rather than Hot?"
-      : "Why is this lead Cold rather than Warm?";
+      ? "Why is this lead Follow Up rather than Act Now?"
+      : "Why is this lead Nurture rather than Follow Up?";
 
   const starterQuestions = [
     "What should I emphasise on the call?",
@@ -160,6 +162,7 @@ export function CopilotPanel({ lead, onClose, onUpdateMessages }: CopilotPanelPr
         supportingEvidence: data.supportingEvidence,
         uncertainties: data.uncertainties,
         suggestedNextQuestion: data.suggestedNextQuestion,
+        provider: data.meta?.provider as "google-gemini" | "groq" | "offline-heuristic" | undefined,
       };
 
       const finalMessages = [...nextMessagesWithUser, assistantMsg];
@@ -217,15 +220,9 @@ export function CopilotPanel({ lead, onClose, onUpdateMessages }: CopilotPanelPr
               <div className="flex items-center gap-2">
                 <h3 className="text-sm font-semibold text-ink truncate">AI Sales Coach</h3>
                 <span
-                  className={`px-1.5 py-0.5 text-[10px] font-medium rounded uppercase shrink-0 ${
-                    band === "hot"
-                      ? "bg-hot-fill text-hot"
-                      : band === "warm"
-                      ? "bg-warm-fill text-warm"
-                      : "bg-cold-fill text-cold"
-                  }`}
+                  className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${PRIORITY_STYLES[band].badgeCompactClass} shrink-0`}
                 >
-                  {band} {lead.priority ? `(${lead.priority.total})` : ""}
+                  {formatPriorityDisplay(band, lead.priority?.total ?? 0)}
                 </span>
               </div>
               <p className="text-[11px] text-muted truncate">
@@ -245,14 +242,16 @@ export function CopilotPanel({ lead, onClose, onUpdateMessages }: CopilotPanelPr
             >
               <RotateCcw className="w-3.5 h-3.5" />
             </button>
-            <button
-              onClick={onClose}
-              className="w-7 h-7 flex items-center justify-center rounded-md text-subtle hover:text-ink hover:bg-raised transition-colors"
-              title="Close sales coach panel"
-              aria-label="Close"
-            >
-              <X className="w-4 h-4" />
-            </button>
+            {onClose && (
+              <button
+                onClick={onClose}
+                className="w-7 h-7 flex items-center justify-center rounded-md text-subtle hover:text-ink hover:bg-raised transition-colors"
+                title="Close sales coach panel"
+                aria-label="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
 
@@ -321,7 +320,20 @@ export function CopilotPanel({ lead, onClose, onUpdateMessages }: CopilotPanelPr
                   ) : (
                     <>
                       <Bot className="w-3 h-3 text-brand dark:text-accent" />
-                      <span className="font-medium text-ink">SignalDesk Coach</span>
+                      <span className="font-medium text-ink">LeadMotive AI Coach</span>
+                      {msg.provider === "groq" ? (
+                        <span className="px-1.5 py-0.2 rounded text-[9px] bg-brand/10 text-brand font-semibold border border-brand/20">
+                          Groq
+                        </span>
+                      ) : msg.provider === "google-gemini" ? (
+                        <span className="px-1.5 py-0.2 rounded text-[9px] bg-accent/15 text-accent font-semibold border border-accent/20">
+                          Gemini
+                        </span>
+                      ) : msg.provider === "offline-heuristic" ? (
+                        <span className="px-1.5 py-0.2 rounded text-[9px] bg-warm-fill text-warm font-semibold border border-warm/20">
+                          Offline
+                        </span>
+                      ) : null}
                     </>
                   )}
                   <span>•</span>
@@ -345,7 +357,7 @@ export function CopilotPanel({ lead, onClose, onUpdateMessages }: CopilotPanelPr
                 >
                   {/* Formatted Content */}
                   <div className="whitespace-pre-wrap space-y-1.5">
-                    {msg.content}
+                    {isUser ? msg.content : normalizeAssistantPriorityText(msg.content)}
                   </div>
 
                   {/* Supporting Grounded Evidence */}
@@ -362,7 +374,7 @@ export function CopilotPanel({ lead, onClose, onUpdateMessages }: CopilotPanelPr
                             className="text-[11px] text-muted flex items-start gap-1.5"
                           >
                             <span className="text-subtle">•</span>
-                            <span>{ev}</span>
+                            <span>{normalizeAssistantPriorityText(ev)}</span>
                           </li>
                         ))}
                       </ul>
@@ -452,7 +464,7 @@ export function CopilotPanel({ lead, onClose, onUpdateMessages }: CopilotPanelPr
           <div className="flex flex-col items-start">
             <div className="flex items-center gap-1.5 mb-1 px-1 text-[10px] text-subtle">
               <Bot className="w-3 h-3 text-brand dark:text-accent" />
-              <span className="font-medium text-ink">SignalDesk Coach</span>
+              <span className="font-medium text-ink">LeadMotive AI Coach</span>
               <span>• Thinking...</span>
             </div>
             <div className="bg-raised border border-divider rounded-lg rounded-tl-none px-3.5 py-2.5">

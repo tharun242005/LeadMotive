@@ -1,5 +1,5 @@
 // ============================================================================
-// SignalDesk — Unit Test Suite: Lead Momentum Plan
+// LeadMotive — Unit Test Suite: Lead Momentum Plan
 // ============================================================================
 //
 // Tests:

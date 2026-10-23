@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X, Sparkles, Check, AlertCircle, Loader2, ShieldCheck, Cpu } from "lucide-react";
+import { X, Sparkles, Check, AlertCircle, Loader2, ShieldCheck, Cpu, RefreshCw, Zap } from "lucide-react";
 import type { DiagnosticsResponse } from "@/types/ai";
 
 interface AISettingsModalProps {
@@ -13,8 +13,8 @@ export function AISettingsModal({ isOpen, onClose }: AISettingsModalProps) {
   const [loading, setLoading] = useState(false);
   const [diagnostics, setDiagnostics] = useState<DiagnosticsResponse | null>(null);
 
-  const fetchDiagnostics = async () => {
-    setLoading(true);
+  // Passive status read (cached server state, zero token consumption)
+  const fetchPassiveDiagnostics = async () => {
     try {
       const res = await fetch("/api/leads/diagnostics");
       const data: DiagnosticsResponse = await res.json();
@@ -22,10 +22,32 @@ export function AISettingsModal({ isOpen, onClose }: AISettingsModalProps) {
     } catch {
       setDiagnostics({
         configured: false,
-        model: "gemini-3.8-flash",
+        model: "gemini-3.5-flash-lite",
+        tested: false,
+        status: "error",
+        statusLabel: "Connection Error",
+        activeProvider: "offline-heuristic",
+        message: "Failed to query server diagnostics endpoint.",
+      });
+    }
+  };
+
+  // Explicit active test (live provider round-trip)
+  const runActiveTest = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/leads/diagnostics?test=true");
+      const data: DiagnosticsResponse = await res.json();
+      setDiagnostics(data);
+    } catch {
+      setDiagnostics({
+        configured: false,
+        model: "gemini-3.5-flash-lite",
         tested: true,
         status: "error",
-        message: "Failed to query server diagnostics endpoint.",
+        statusLabel: "Connection Error",
+        activeProvider: "offline-heuristic",
+        message: "Live connection test failed to reach server endpoint.",
       });
     } finally {
       setLoading(false);
@@ -34,13 +56,59 @@ export function AISettingsModal({ isOpen, onClose }: AISettingsModalProps) {
 
   useEffect(() => {
     if (isOpen) {
-      fetchDiagnostics();
+      fetchPassiveDiagnostics();
     }
   }, [isOpen]);
 
   if (!isOpen) return null;
 
-  const isLiveReady = diagnostics?.configured && diagnostics.status === "ready";
+  // Compute status presentation
+  const status = diagnostics?.status || "unconfigured";
+  const statusLabel =
+    diagnostics?.statusLabel ||
+    (status === "ready"
+      ? "Gemini Ready"
+      : status === "secondary_active"
+      ? "Secondary AI Active"
+      : status === "rate_limited"
+      ? "Gemini Rate Limited"
+      : status === "unavailable"
+      ? "Gemini Unavailable"
+      : status === "unconfigured"
+      ? "Configuration Required"
+      : "Offline Heuristic Mode");
+
+  const isGreen = status === "ready";
+  const isBlue = status === "secondary_active";
+  const isAmber = status === "rate_limited" || status === "unavailable";
+  const isRed = status === "error";
+
+  const badgeStyle = isGreen
+    ? "bg-accent-subtle text-accent border-accent/30"
+    : isBlue
+    ? "bg-brand/10 text-brand border-brand/30"
+    : isAmber
+    ? "bg-warm-fill text-warm border-warm/30"
+    : isRed
+    ? "bg-danger-fill text-danger border-danger/30"
+    : "bg-raised text-muted border-edge";
+
+  const dotStyle = isGreen
+    ? "bg-accent animate-pulse"
+    : isBlue
+    ? "bg-brand animate-pulse"
+    : isAmber
+    ? "bg-warm"
+    : isRed
+    ? "bg-danger"
+    : "bg-subtle";
+
+  const activeProviderDisplay =
+    diagnostics?.activeProvider === "google-gemini"
+      ? "Google Gemini"
+      : diagnostics?.activeProvider === "groq"
+      ? "Groq (Secondary Fallback)"
+      : "Bengaluru Heuristic Engine";
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[10vh] px-4 anim-fade-in">
@@ -57,12 +125,12 @@ export function AISettingsModal({ isOpen, onClose }: AISettingsModalProps) {
             </div>
             <div>
               <h2 className="text-sm font-semibold text-ink">AI Engine & Server Diagnostics</h2>
-              <p className="text-[11px] text-subtle">Server-side Google Gemini 3.8 Flash Status</p>
+              <p className="text-[11px] text-subtle">Provider Cascade: Gemini → Groq → Offline Heuristics</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="w-7 h-7 flex items-center justify-center rounded-md text-subtle hover:text-ink hover:bg-raised transition-colors"
+            className="w-7 h-7 flex items-center justify-center rounded-md text-subtle hover:text-ink hover:bg-raised transition-colors cursor-pointer"
             aria-label="Close"
           >
             <X className="w-4 h-4" />
@@ -74,30 +142,18 @@ export function AISettingsModal({ isOpen, onClose }: AISettingsModalProps) {
           {/* Status summary banner */}
           <div className="p-3.5 rounded-lg border border-edge bg-canvas/60">
             <div className="flex items-center justify-between mb-2">
-              <span className="font-medium text-ink">Server AI Readiness:</span>
+              <span className="font-medium text-ink">Operational Status:</span>
               <span
-                className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-medium ${
-                  isLiveReady
-                    ? "bg-accent-subtle text-accent"
-                    : "bg-warm-fill text-warm border border-warm/20"
-                }`}
+                id="ai-readiness-badge"
+                className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-semibold border ${badgeStyle}`}
               >
-                <span
-                  className={`w-1.5 h-1.5 rounded-full ${
-                    isLiveReady ? "bg-accent animate-pulse" : "bg-warm"
-                  }`}
-                />
-                {isLiveReady
-                  ? "Live Gemini Connected"
-                  : diagnostics?.configured
-                  ? "Configured (Awaiting Verification)"
-                  : "Offline Heuristic Mode"}
+                <span className={`w-1.5 h-1.5 rounded-full ${dotStyle}`} />
+                {statusLabel}
               </span>
             </div>
             <p className="text-[11px] text-muted leading-relaxed">
-              {diagnostics?.configured
-                ? "The server environment has GEMINI_API_KEY set. Requests execute against the configured model with sub-second latency."
-                : "Live GEMINI_API_KEY is not configured in the server environment. SignalDesk runs its deterministic Bengaluru heuristic engine so you can test all workflows without external dependencies."}
+              {diagnostics?.message ||
+                "LeadMotive utilizes a resilient dual-provider architecture with instant offline heuristic fallback to ensure 100% workflow availability."}
             </p>
           </div>
 
@@ -105,20 +161,26 @@ export function AISettingsModal({ isOpen, onClose }: AISettingsModalProps) {
           <div className="grid grid-cols-2 gap-2.5">
             <div className="p-3 rounded-md border border-edge bg-raised/30">
               <span className="text-[10px] text-subtle block uppercase tracking-wider mb-1">
-                Target Model
+                Configured Primary Model
               </span>
               <span className="text-xs font-mono font-medium text-ink">
-                {diagnostics?.model || "gemini-3.8-flash"}
+                {diagnostics?.primaryModel || diagnostics?.model || "gemini-3.5-flash-lite"}
               </span>
             </div>
 
             <div className="p-3 rounded-md border border-edge bg-raised/30">
               <span className="text-[10px] text-subtle block uppercase tracking-wider mb-1">
-                Security Sandbox
+                Active Provider
               </span>
-              <span className="text-xs font-medium text-ink inline-flex items-center gap-1">
-                <ShieldCheck className="w-3.5 h-3.5 text-accent" />
-                Zero Browser Keys
+              <span className="text-xs font-semibold text-ink flex items-center gap-1.5">
+                {diagnostics?.activeProvider === "google-gemini" ? (
+                  <Sparkles className="w-3.5 h-3.5 text-accent shrink-0" />
+                ) : diagnostics?.activeProvider === "groq" ? (
+                  <Zap className="w-3.5 h-3.5 text-brand shrink-0" />
+                ) : (
+                  <ShieldCheck className="w-3.5 h-3.5 text-subtle shrink-0" />
+                )}
+                <span className="truncate">{activeProviderDisplay}</span>
               </span>
             </div>
           </div>
@@ -127,69 +189,87 @@ export function AISettingsModal({ isOpen, onClose }: AISettingsModalProps) {
           {diagnostics && (
             <div
               className={`p-3 rounded-md border text-xs flex items-start gap-2.5 ${
-                diagnostics.status === "ready"
+                isGreen
                   ? "bg-accent-subtle/40 border-accent/30 text-ink"
-                  : diagnostics.status === "unconfigured"
+                  : isBlue
+                  ? "bg-brand/10 border-brand/30 text-ink"
+                  : isAmber
                   ? "bg-warm-fill/60 border-warm/20 text-muted"
                   : "bg-danger-fill border-danger/30 text-danger"
               }`}
             >
-              {diagnostics.status === "ready" ? (
+              {isGreen ? (
                 <Check className="w-4 h-4 text-accent shrink-0 mt-0.5" />
-              ) : diagnostics.status === "unconfigured" ? (
-                <Sparkles className="w-4 h-4 text-warm shrink-0 mt-0.5" />
+              ) : isBlue ? (
+                <Zap className="w-4 h-4 text-brand shrink-0 mt-0.5" />
+              ) : isAmber ? (
+                <AlertCircle className="w-4 h-4 text-warm shrink-0 mt-0.5" />
               ) : (
                 <AlertCircle className="w-4 h-4 text-danger shrink-0 mt-0.5" />
               )}
-              <div className="space-y-0.5">
-                <p className="font-medium text-ink">
-                  {diagnostics.status === "ready"
-                    ? "Connectivity Verified"
-                    : diagnostics.status === "unconfigured"
-                    ? "Heuristic Preview Active"
-                    : "Provider Error"}
-                </p>
+              <div className="space-y-0.5 flex-1">
+                <div className="flex items-center justify-between">
+                  <p className="font-semibold text-ink">
+                    {diagnostics.tested ? "Live Connection Verified" : "Cached Server State"}
+                  </p>
+                  {diagnostics.latencyMs !== undefined && (
+                    <span className="text-[11px] font-mono text-muted">
+                      {diagnostics.latencyMs}ms round-trip
+                    </span>
+                  )}
+                </div>
                 <p className="text-[11px] text-muted">{diagnostics.message}</p>
-                {diagnostics.latencyMs !== undefined && (
-                  <p className="text-[10px] text-subtle font-mono">
-                    Round-trip latency: {diagnostics.latencyMs}ms
+                {diagnostics.lastTestedAt && (
+                  <p className="text-[10px] text-subtle font-mono pt-0.5">
+                    Checked: {new Date(diagnostics.lastTestedAt).toLocaleTimeString()}
                   </p>
                 )}
               </div>
             </div>
           )}
 
-          {/* Environment guide */}
-          <div className="p-3 rounded-md border border-edge bg-panel text-[11px] text-subtle space-y-1">
-            <p className="font-medium text-ink">Server Configuration Instructions</p>
-            <p>
-              To enable live Gemini calls in development or on Vercel, set the environment variable:
+          {/* Environment configuration instructions (ZERO SECRETS EXPOSED) */}
+          <div className="p-3.5 rounded-md border border-edge bg-panel text-[11px] text-subtle space-y-1.5">
+            <div className="flex items-center justify-between">
+              <p className="font-semibold text-ink">Server Configuration Guidance</p>
+              <span className="inline-flex items-center gap-1 text-[10px] text-accent">
+                <ShieldCheck className="w-3.5 h-3.5" /> Zero Browser Keys
+              </span>
+            </div>
+            <p className="text-muted leading-relaxed">
+              Configure environment variables on your server or Vercel deployment. Never enter API keys into browser inputs or commit them to Git.
             </p>
-            <code className="block bg-raised px-2 py-1 rounded font-mono text-[10px] text-ink">
-              GEMINI_API_KEY=AIzaSy...
-            </code>
+            <div className="bg-raised p-2 rounded-md font-mono text-[10px] text-ink space-y-1 border border-edge/60">
+              <div className="text-subtle"># Primary Provider</div>
+              <div>GEMINI_API_KEY=&lt;your_key&gt;</div>
+              <div>GEMINI_MODEL=gemini-3.5-flash-lite</div>
+              <div className="text-subtle pt-1"># Optional Secondary Provider</div>
+              <div>GROQ_API_KEY=&lt;optional_key&gt;</div>
+              <div>GROQ_MODEL=openai/gpt-oss-20b</div>
+            </div>
           </div>
 
           {/* Actions */}
           <div className="pt-2 flex items-center justify-between border-t border-edge">
             <button
+              id="test-connection-btn"
               type="button"
-              onClick={fetchDiagnostics}
+              onClick={runActiveTest}
               disabled={loading}
-              className="px-3 py-1.5 text-xs font-medium border border-edge rounded-md text-ink hover:bg-raised transition-colors flex items-center gap-1.5 disabled:opacity-50"
+              className="px-3.5 py-1.5 text-xs font-semibold border border-edge rounded-md text-ink hover:bg-raised transition-colors flex items-center gap-1.5 disabled:opacity-50 cursor-pointer shadow-xs"
             >
               {loading ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-brand" />
               ) : (
-                <Sparkles className="w-3.5 h-3.5 text-accent" />
+                <RefreshCw className="w-3.5 h-3.5 text-brand" />
               )}
-              <span>{loading ? "Testing..." : "Test Connection"}</span>
+              <span>{loading ? "Testing Connection…" : "Test Connection"}</span>
             </button>
 
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-1.5 text-xs font-medium bg-raised text-ink hover:bg-edge rounded-md transition-colors"
+              className="px-4 py-1.5 text-xs font-semibold bg-raised text-ink hover:bg-edge rounded-md transition-colors cursor-pointer"
             >
               Close
             </button>

@@ -27,7 +27,7 @@ function MomentumPageInner() {
     setLeads(loadedLeads);
     setPlans(loadedPlans);
 
-    const leadParam = searchParams.get("lead");
+    const leadParam = searchParams.get("lead") || searchParams.get("leadId");
     if (leadParam && loadedLeads.some((l) => l.id === leadParam)) {
       setSelectedLeadId(leadParam);
     } else if (loadedLeads.length > 0) {
@@ -38,7 +38,7 @@ function MomentumPageInner() {
 
   const handleSelectLead = (id: string) => {
     setSelectedLeadId(id);
-    router.push(`/workspace/momentum?lead=${id}`);
+    router.push(`/workspace/momentum?leadId=${id}`);
   };
 
   const handleSavePlan = (plan: LeadMomentumPlan) => {
@@ -70,6 +70,16 @@ function MomentumPageInner() {
     <div className="flex h-screen bg-canvas overflow-hidden">
       {/* Navigation Rail */}
       <NavRail
+        activeView="momentum"
+        onViewChange={(v) => {
+          if (v === "leads") {
+            router.push(selectedLeadId ? `/workspace?lead=${selectedLeadId}` : "/workspace");
+          } else if (v === "coach") {
+            router.push(selectedLeadId ? `/workspace?view=coach&lead=${selectedLeadId}` : "/workspace?view=coach");
+          } else if (v === "rehearsal") {
+            router.push(selectedLeadId ? `/workspace?view=rehearsal&lead=${selectedLeadId}` : "/workspace?view=rehearsal");
+          }
+        }}
         onNewLead={() => router.push("/workspace")}
         onResetDemo={() => router.push("/workspace")}
       />

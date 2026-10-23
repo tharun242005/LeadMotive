@@ -18,12 +18,14 @@ import {
   ArrowRight,
   Info,
   ChevronDown,
+  Zap,
 } from "lucide-react";
 import type {
   Lead,
   RehearsalMessage,
   RehearsalFeedback,
   RehearsalSession,
+  RehearsalScenarioType,
   ExtractedObjection,
   RubricDimension,
 } from "@/types/lead";
@@ -33,6 +35,7 @@ import {
   saveRehearsalSession,
   deleteRehearsalSessionForLead,
 } from "@/lib/storage/local-store";
+import { formatPriorityDisplay, PRIORITY_STYLES } from "@/lib/leads/scoring";
 
 // ---------------------------------------------------------------------------
 // Props
@@ -40,8 +43,10 @@ import {
 interface RehearsalPanelProps {
   lead: Lead;
   initialObjection?: ExtractedObjection;
-  onClose: () => void;
+  initialScenarioType?: RehearsalScenarioType;
+  onClose?: () => void;
   onUpdateSession?: (session: RehearsalSession) => void;
+  isFullPage?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -50,6 +55,7 @@ interface RehearsalPanelProps {
 export function RehearsalPanel({
   lead,
   initialObjection,
+  initialScenarioType,
   onClose,
   onUpdateSession,
 }: RehearsalPanelProps) {
@@ -70,11 +76,30 @@ export function RehearsalPanel({
     return loadRehearsalSessionForLead(lead.id) || lead.rehearsalSession || null;
   }, [lead.id, lead.rehearsalSession]);
 
+  const isConfirmedImmediate = useMemo(() => {
+    const msg = (lead.customerMessage || "").toLowerCase();
+    return (
+      lead.buyingTimeline === "immediate" ||
+      lead.priority?.band === "hot" ||
+      msg.includes("immediate") ||
+      msg.includes("ready to visit") ||
+      msg.includes("this weekend") ||
+      msg.includes("right away")
+    );
+  }, [lead.buyingTimeline, lead.priority.band, lead.customerMessage]);
+
+  const [scenarioMode, setScenarioMode] = useState<RehearsalScenarioType>(() => {
+    if (initialScenarioType) return initialScenarioType;
+    if (initialObjection) return "documented_concern";
+    if (existingSession?.scenarioType) return existingSession.scenarioType;
+    return "immediate_buyer"; // Default to Immediate Buyer as prominent first-class option
+  });
+
   const [selectedObjection, setSelectedObjection] = useState<ExtractedObjection>(() => {
     if (initialObjection) return initialObjection;
     if (existingSession?.targetObjection) {
       const match = availableObjections.find(
-        (o) => o.label.toLowerCase() === existingSession.targetObjection.toLowerCase()
+        (o) => o.label.toLowerCase() === existingSession.targetObjection?.toLowerCase()
       );
       if (match) return match;
     }
@@ -119,11 +144,25 @@ export function RehearsalPanel({
       newFeedback: RehearsalFeedback | null,
       status: RehearsalSession["status"] = "in_progress"
     ) => {
+      const isHypothetical = scenarioMode === "immediate_buyer" && !isConfirmedImmediate;
+      const sessionTitle =
+        scenarioMode === "immediate_buyer"
+          ? "Immediate Buyer — Ready to Move Forward"
+          : selectedObjection.label;
+
+      const sessionObjective =
+        scenarioMode === "immediate_buyer"
+          ? `Guide high-intent buyer ${lead.name} from their immediate requirement to a concrete next step.`
+          : `Address ${selectedObjection.label} with grounded evidence and secure a private site walkthrough.`;
+
       const session: RehearsalSession = {
         sessionId: existingSession?.sessionId || `rehearsal-${lead.id}-${generateId()}`,
         leadId: lead.id,
-        targetObjection: selectedObjection.label,
-        objective: `Address ${selectedObjection.label} with grounded evidence and secure a private site walkthrough.`,
+        scenarioType: scenarioMode,
+        scenarioTitle: sessionTitle,
+        isHypothetical,
+        targetObjection: scenarioMode === "documented_concern" ? selectedObjection.label : undefined,
+        objective: sessionObjective,
         messages: newMessages,
         feedback: newFeedback,
         status,
@@ -136,8 +175,53 @@ export function RehearsalPanel({
         onUpdateSession(session);
       }
     },
-    [existingSession, lead.id, selectedObjection.label, onUpdateSession]
+    [existingSession, lead.id, lead.name, scenarioMode, isConfirmedImmediate, selectedObjection.label, onUpdateSession]
   );
+
+  // Reset/Restart Scenario
+  const handleRestart = (newMode?: RehearsalScenarioType) => {
+    const activeMode =
+      typeof newMode === "string" && (newMode === "immediate_buyer" || newMode === "documented_concern")
+        ? newMode
+        : scenarioMode;
+    const isHypothetical = activeMode === "immediate_buyer" && !isConfirmedImmediate;
+    deleteRehearsalSessionForLead(lead.id);
+    setMessages([]);
+    setFeedback(null);
+    setShowDebriefView(false);
+    setErrorMessage(null);
+    if (onUpdateSession) {
+      const nowIso = new Date().toISOString();
+      onUpdateSession({
+        sessionId: `rehearsal-${lead.id}-${generateId()}`,
+        leadId: lead.id,
+        scenarioType: activeMode,
+        scenarioTitle:
+          activeMode === "immediate_buyer"
+            ? "Immediate Buyer — Ready to Move Forward"
+            : selectedObjection.label,
+        isHypothetical,
+        targetObjection: activeMode === "documented_concern" ? selectedObjection.label : undefined,
+        objective:
+          activeMode === "immediate_buyer"
+            ? `Guide high-intent buyer ${lead.name} from their immediate requirement to a concrete next step.`
+            : `Address ${selectedObjection.label}`,
+        messages: [],
+        feedback: null,
+        status: "in_progress",
+        startedAt: nowIso,
+        updatedAt: nowIso,
+      });
+    }
+  };
+
+  // Switch between Immediate Buyer and Documented Concern
+  const handleSwitchScenarioMode = (newMode: RehearsalScenarioType) => {
+    if (newMode === scenarioMode) return;
+    setScenarioMode(newMode);
+    setIsSwitchingObjection(false);
+    handleRestart(newMode);
+  };
 
   // Send message or trigger turn
   const handleSendMessage = async (textToSend?: string, modeOverride?: "roleplay" | "coach") => {
@@ -173,9 +257,14 @@ export function RehearsalPanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           mode,
+          scenarioType: scenarioMode,
+          isHypothetical: scenarioMode === "immediate_buyer" && !isConfirmedImmediate,
           message: content,
-          targetObjection: selectedObjection,
-          objective: `Overcome ${selectedObjection.label} and secure walkthrough`,
+          targetObjection: scenarioMode === "documented_concern" ? selectedObjection : undefined,
+          objective:
+            scenarioMode === "immediate_buyer"
+              ? `Guide high-intent buyer ${lead.name} from their immediate requirement to a concrete next step.`
+              : `Overcome ${selectedObjection.label} and secure walkthrough`,
           leadContext: {
             id: lead.id,
             name: lead.name,
@@ -189,6 +278,7 @@ export function RehearsalPanel({
               ? {
                   summary: lead.analysis.summary,
                   intent: lead.analysis.intent,
+                  recommendedAction: lead.analysis.recommendedAction,
                 }
               : null,
           },
@@ -250,36 +340,12 @@ export function RehearsalPanel({
     handleSendMessage("", "coach");
   };
 
-  // Reset/Restart Scenario
-  const handleRestart = () => {
-    deleteRehearsalSessionForLead(lead.id);
-    setMessages([]);
-    setFeedback(null);
-    setShowDebriefView(false);
-    setErrorMessage(null);
-    if (onUpdateSession) {
-      const nowIso = new Date().toISOString();
-      onUpdateSession({
-        sessionId: `rehearsal-${lead.id}-${generateId()}`,
-        leadId: lead.id,
-        targetObjection: selectedObjection.label,
-        objective: `Address ${selectedObjection.label}`,
-        messages: [],
-        feedback: null,
-        status: "in_progress",
-        startedAt: nowIso,
-        updatedAt: nowIso,
-      });
-    }
-  };
-
   // Switch to another objection
   const handleSelectObjection = (obj: ExtractedObjection) => {
     setSelectedObjection(obj);
     setIsSwitchingObjection(false);
-    // If conversation is already underway, ask or restart
     if (messages.length > 0) {
-      handleRestart();
+      handleRestart("documented_concern");
     }
   };
 
@@ -295,21 +361,33 @@ export function RehearsalPanel({
   return (
     <div className="flex flex-col h-full bg-canvas text-ink border-l border-edge select-text">
       {/* ── Studio Header ── */}
-      <div className="shrink-0 px-4 py-3.5 border-b border-edge bg-panel/70 backdrop-blur-xs">
+      <div className="shrink-0 px-4 py-3 border-b border-edge bg-panel/70 backdrop-blur-xs">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-8 h-8 rounded-lg bg-brand/10 border border-brand/20 flex items-center justify-center text-brand shrink-0">
-              <Target className="w-4 h-4" />
+              {scenarioMode === "immediate_buyer" ? (
+                <Zap className="w-4 h-4 text-brand" />
+              ) : (
+                <Target className="w-4 h-4 text-brand" />
+              )}
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <h3 className="text-sm font-semibold text-ink truncate">Objection Rehearsal</h3>
+                <h3 className="text-sm font-semibold text-ink truncate">
+                  {scenarioMode === "immediate_buyer"
+                    ? "Immediate Buyer Practice"
+                    : "Objection Rehearsal"}
+                </h3>
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${PRIORITY_STYLES[lead.priority.band].badgeCompactClass} shrink-0`}>
+                  {formatPriorityDisplay(lead.priority.band, lead.priority.total)}
+                </span>
                 <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-medium uppercase bg-violet-500/10 text-violet-600 dark:text-violet-400 border border-violet-500/20 shrink-0">
                   Simulation Studio
                 </span>
               </div>
               <p className="text-[11px] text-subtle truncate">
-                Simulating buyer <strong className="text-muted font-medium">{lead.name}</strong> • {lead.location}
+                Simulating buyer <strong className="text-muted font-medium">{lead.name}</strong> •{" "}
+                {scenarioMode === "immediate_buyer" ? "Ready to Move Forward" : selectedObjection.label} • {lead.location}
               </p>
             </div>
           </div>
@@ -317,7 +395,7 @@ export function RehearsalPanel({
           <div className="flex items-center gap-1 shrink-0">
             {messages.length > 0 && (
               <button
-                onClick={handleRestart}
+                onClick={() => handleRestart()}
                 className="h-8 px-2.5 flex items-center gap-1.5 text-xs text-muted hover:text-ink hover:bg-raised rounded-md transition-colors"
                 title="Restart this rehearsal"
               >
@@ -325,83 +403,167 @@ export function RehearsalPanel({
                 <span className="hidden sm:inline text-[11px]">Restart</span>
               </button>
             )}
-            <button
-              onClick={onClose}
-              className="w-8 h-8 flex items-center justify-center rounded-md text-subtle hover:text-ink hover:bg-raised transition-colors"
-              aria-label="Exit Rehearsal"
-              title="Exit to Lead Analysis"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-
-        {/* ── Target Concern Picker ── */}
-        <div className="mt-3 pt-3 border-t border-edge/60">
-          <div className="flex items-center justify-between gap-2 mb-1.5">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-subtle flex items-center gap-1">
-              <Shield className="w-3 h-3 text-brand" />
-              Target Customer Concern
-            </span>
-            {availableObjections.length > 1 && (
+            {onClose && (
               <button
-                onClick={() => setIsSwitchingObjection((v) => !v)}
-                className="text-[11px] text-brand hover:underline flex items-center gap-0.5"
+                onClick={onClose}
+                className="w-8 h-8 flex items-center justify-center rounded-md text-subtle hover:text-ink hover:bg-raised transition-colors"
+                aria-label="Exit Rehearsal"
+                title="Exit to Lead Analysis"
               >
-                Switch Concern
-                <ChevronDown className="w-3 h-3" />
+                <X className="w-4 h-4" />
               </button>
             )}
           </div>
+        </div>
 
-          {/* Current selected objection card */}
-          <div className="p-2.5 rounded-lg bg-raised/50 border border-edge flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold text-ink">{selectedObjection.label}</span>
-                <span
-                  className={`px-1.5 py-0.2 rounded text-[9px] font-mono uppercase ${
-                    selectedObjection.severity === "high"
-                      ? "bg-danger/10 text-danger border border-danger/20"
-                      : selectedObjection.severity === "medium"
-                      ? "bg-caution/10 text-caution border border-caution/20"
-                      : "bg-subtle/10 text-subtle border border-edge"
-                  }`}
-                >
-                  {selectedObjection.severity}
+        {/* ── Scenario Selection Mode (First-class Immediate Buyer vs Documented Concern) ── */}
+        <div className="mt-2.5 pt-2.5 border-t border-edge/60 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-subtle flex items-center gap-1">
+              <Target className="w-3 h-3 text-brand" />
+              Practice Scenario
+            </span>
+            {scenarioMode === "immediate_buyer" ? (
+              isConfirmedImmediate ? (
+                <span className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                  Confirmed High Intent
                 </span>
+              ) : (
+                <span className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20" title="Lead timeline is not marked immediate; practicing hypothetical accelerated intent">
+                  Hypothetical Scenario
+                </span>
+              )
+            ) : (
+              <span className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-violet-500/10 text-violet-600 dark:text-violet-400 border border-violet-500/20">
+                Documented Concern
+              </span>
+            )}
+          </div>
+
+          {/* Mode Selector Tabs */}
+          <div className="grid grid-cols-2 gap-1.5 p-1 bg-raised/50 border border-edge rounded-lg">
+            <button
+              type="button"
+              onClick={() => handleSwitchScenarioMode("immediate_buyer")}
+              className={`px-2.5 py-1.5 rounded-md text-left transition-all flex flex-col gap-0.5 ${
+                scenarioMode === "immediate_buyer"
+                  ? "bg-panel text-ink shadow-2xs border border-brand/30"
+                  : "text-muted hover:text-ink hover:bg-raised/60"
+              }`}
+            >
+              <div className="flex items-center gap-1.5 font-semibold text-xs text-brand">
+                <Zap className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">Immediate Buyer</span>
               </div>
-              {selectedObjection.evidenceQuote && (
-                <p className="text-[11px] text-muted italic mt-0.5 line-clamp-1">
-                  &ldquo;{selectedObjection.evidenceQuote}&rdquo;
+              <span className="text-[10px] text-subtle truncate">Ready to move forward</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleSwitchScenarioMode("documented_concern")}
+              className={`px-2.5 py-1.5 rounded-md text-left transition-all flex flex-col gap-0.5 ${
+                scenarioMode === "documented_concern"
+                  ? "bg-panel text-ink shadow-2xs border border-brand/30"
+                  : "text-muted hover:text-ink hover:bg-raised/60"
+              }`}
+            >
+              <div className="flex items-center gap-1.5 font-semibold text-xs text-ink">
+                <Shield className="w-3.5 h-3.5 shrink-0 text-muted" />
+                <span className="truncate">Documented Concern</span>
+              </div>
+              <span className="text-[10px] text-subtle truncate">
+                {availableObjections.length} documented
+              </span>
+            </button>
+          </div>
+
+          {/* Scenario Details Card */}
+          {scenarioMode === "immediate_buyer" ? (
+            <div className="p-2.5 rounded-lg bg-raised/40 border border-brand/20 space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-semibold text-ink flex items-center gap-1.5">
+                  <Zap className="w-3.5 h-3.5 text-brand" />
+                  Immediate Buyer — Ready to Move Forward
+                </span>
+                {isConfirmedImmediate ? (
+                  <span className="px-1.5 py-0.2 rounded text-[9px] font-mono uppercase bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                    Active Intent
+                  </span>
+                ) : (
+                  <span className="px-1.5 py-0.2 rounded text-[9px] font-mono uppercase bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                    Hypothetical
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-muted leading-relaxed">
+                Practise guiding a high-intent buyer from their immediate requirement to a concrete next step.
+              </p>
+              {!isConfirmedImmediate && (
+                <p className="text-[10px] text-amber-600 dark:text-amber-400 italic">
+                  * Note: {lead.name}&apos;s verified timeline is not immediate; practicing hypothetical accelerated intent.
                 </p>
               )}
             </div>
-          </div>
+          ) : (
+            <div>
+              <div className="p-2.5 rounded-lg bg-raised/50 border border-edge flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-ink">{selectedObjection.label}</span>
+                    <span
+                      className={`px-1.5 py-0.2 rounded text-[9px] font-mono uppercase ${
+                        selectedObjection.severity === "high"
+                          ? "bg-danger/10 text-danger border border-danger/20"
+                          : selectedObjection.severity === "medium"
+                          ? "bg-caution/10 text-caution border border-caution/20"
+                          : "bg-subtle/10 text-subtle border border-edge"
+                      }`}
+                    >
+                      {selectedObjection.severity}
+                    </span>
+                  </div>
+                  {selectedObjection.evidenceQuote && (
+                    <p className="text-[11px] text-muted italic mt-0.5 line-clamp-1">
+                      &ldquo;{selectedObjection.evidenceQuote}&rdquo;
+                    </p>
+                  )}
+                </div>
+                {availableObjections.length > 1 && (
+                  <button
+                    onClick={() => setIsSwitchingObjection((v) => !v)}
+                    className="text-[11px] text-brand hover:underline flex items-center gap-0.5 shrink-0"
+                  >
+                    Switch Concern
+                    <ChevronDown className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
 
-          {/* Dropdown for alternative objections */}
-          {isSwitchingObjection && (
-            <div className="mt-2 space-y-1.5 p-2 rounded-lg bg-panel border border-edge shadow-md anim-fade-in">
-              <p className="text-[10px] text-subtle font-medium px-1">Select documented concern to practice:</p>
-              {availableObjections.map((obj, i) => (
-                <button
-                  key={i}
-                  onClick={() => handleSelectObjection(obj)}
-                  className={`w-full text-left p-2 rounded-md text-xs transition-colors flex items-center justify-between ${
-                    obj.label === selectedObjection.label
-                      ? "bg-brand/10 text-brand font-medium border border-brand/20"
-                      : "hover:bg-raised text-ink"
-                  }`}
-                >
-                  <span className="truncate">{obj.label}</span>
-                  <span className="text-[9px] uppercase font-mono text-subtle ml-2 shrink-0">{obj.severity}</span>
-                </button>
-              ))}
+              {/* Dropdown for alternative objections */}
+              {isSwitchingObjection && (
+                <div className="mt-2 space-y-1.5 p-2 rounded-lg bg-panel border border-edge shadow-md anim-fade-in">
+                  <p className="text-[10px] text-subtle font-medium px-1">Select documented concern to practice:</p>
+                  {availableObjections.map((obj, i) => (
+                    <button
+                      key={i}
+                      onClick={() => handleSelectObjection(obj)}
+                      className={`w-full text-left p-2 rounded-md text-xs transition-colors flex items-center justify-between ${
+                        obj.label === selectedObjection.label
+                          ? "bg-brand/10 text-brand font-medium border border-brand/20"
+                          : "hover:bg-raised text-ink"
+                      }`}
+                    >
+                      <span className="truncate">{obj.label}</span>
+                      <span className="text-[9px] uppercase font-mono text-subtle ml-2 shrink-0">{obj.severity}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
           {/* Simulation disclaimer banner */}
-          <div className="mt-2.5 flex items-start gap-1.5 px-2.5 py-1.5 rounded-md bg-violet-500/5 border border-violet-500/15 text-[10px] text-violet-700 dark:text-violet-300">
+          <div className="flex items-start gap-1.5 px-2.5 py-1.5 rounded-md bg-violet-500/5 border border-violet-500/15 text-[10px] text-violet-700 dark:text-violet-300">
             <Info className="w-3.5 h-3.5 shrink-0 mt-0.5 text-violet-500" />
             <span className="leading-tight">
               <strong>Fictional Buyer Simulation:</strong> AI simulates {lead.name}&apos;s persona. Practice content is strictly isolated and never alters verified customer evidence.
@@ -421,7 +583,7 @@ export function RehearsalPanel({
               onClick={() => setShowDebriefView((v) => !v)}
               className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors flex items-center gap-1 ${
                 showDebriefView
-                  ? "bg-brand text-accent font-semibold"
+                  ? "bg-brand text-brand-fg font-semibold"
                   : "bg-brand/10 text-brand hover:bg-brand/20"
               }`}
             >
@@ -467,10 +629,14 @@ export function RehearsalPanel({
                   <div className="flex items-center gap-2 mb-1">
                     <Star className="w-4 h-4 text-brand fill-brand" />
                     <span className="text-xs font-bold uppercase tracking-wider text-brand">
-                      Rehearsal Debrief
+                      {scenarioMode === "immediate_buyer" ? "Immediate Buyer Debrief" : "Rehearsal Debrief"}
                     </span>
                   </div>
-                  <h4 className="text-base font-bold text-ink">Technique Evaluation</h4>
+                  <h4 className="text-base font-bold text-ink">
+                    {scenarioMode === "immediate_buyer"
+                      ? "Immediate Buyer Technique Evaluation"
+                      : "Technique Evaluation"}
+                  </h4>
                   {feedback.summary && (
                     <p className="text-xs text-muted mt-1 leading-relaxed">{feedback.summary}</p>
                   )}
@@ -499,7 +665,7 @@ export function RehearsalPanel({
                 </div>
               </div>
 
-              {/* Concern Addressed Callout */}
+              {/* Concern/Need Addressed Callout */}
               <div
                 className={`mt-3 p-2.5 rounded-lg border text-xs flex items-start gap-2 ${
                   feedback.concernAddressed.addressed
@@ -515,7 +681,11 @@ export function RehearsalPanel({
                 <div>
                   <span className="font-semibold block">
                     {feedback.concernAddressed.addressed
-                      ? "Target Concern Addressed"
+                      ? scenarioMode === "immediate_buyer"
+                        ? "Immediate Requirement Addressed"
+                        : "Target Concern Addressed"
+                      : scenarioMode === "immediate_buyer"
+                      ? "Immediate Requirement Unresolved"
                       : "Target Concern Still Unresolved"}
                   </span>
                   <span className="text-[11px] opacity-90 mt-0.5 leading-snug">
@@ -657,8 +827,8 @@ export function RehearsalPanel({
                 Back to Transcript
               </button>
               <button
-                onClick={handleRestart}
-                className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-brand text-accent hover:opacity-90 transition-opacity flex items-center gap-1.5"
+                onClick={() => handleRestart()}
+                className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-brand text-brand-fg hover:opacity-90 transition-opacity flex items-center gap-1.5"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>Retry Scenario</span>
@@ -672,14 +842,31 @@ export function RehearsalPanel({
             {messages.length === 0 && (
               <div className="py-6 px-3 text-center space-y-4 max-w-md mx-auto">
                 <div className="w-12 h-12 rounded-2xl bg-brand/10 border border-brand/20 flex items-center justify-center text-brand mx-auto shadow-xs">
-                  <Target className="w-6 h-6" />
+                  {scenarioMode === "immediate_buyer" ? (
+                    <Zap className="w-6 h-6" />
+                  ) : (
+                    <Target className="w-6 h-6" />
+                  )}
                 </div>
                 <div>
-                  <h4 className="text-sm font-bold text-ink">Ready to Practise</h4>
+                  <h4 className="text-sm font-bold text-ink">
+                    {scenarioMode === "immediate_buyer"
+                      ? "Ready to Practise Immediate Buyer"
+                      : "Ready to Practise"}
+                  </h4>
                   <p className="text-xs text-muted mt-1 leading-relaxed">
-                    Test your rebuttal techniques against a realistic AI simulation of{" "}
-                    <strong>{lead.name}</strong> voicing concern over{" "}
-                    <em>{selectedObjection.label}</em>.
+                    {scenarioMode === "immediate_buyer" ? (
+                      <>
+                        Practise guiding <strong>{lead.name}</strong> from their immediate requirement (
+                        <em>{lead.propertyRequirement}</em> in {lead.location}) to a confirmed next step.
+                      </>
+                    ) : (
+                      <>
+                        Test your rebuttal techniques against a realistic AI simulation of{" "}
+                        <strong>{lead.name}</strong> voicing concern over{" "}
+                        <em>{selectedObjection.label}</em>.
+                      </>
+                    )}
                   </p>
                 </div>
 
@@ -687,10 +874,14 @@ export function RehearsalPanel({
                 <button
                   onClick={handleStartOpeningTurn}
                   disabled={loading}
-                  className="w-full py-2.5 px-4 rounded-xl bg-brand text-accent hover:opacity-90 font-semibold text-xs shadow-xs transition-opacity flex items-center justify-center gap-2"
+                  className="w-full py-2.5 px-4 rounded-xl bg-brand text-brand-fg hover:opacity-90 font-semibold text-xs shadow-xs transition-opacity flex items-center justify-center gap-2"
                 >
                   <Bot className="w-4 h-4" />
-                  <span>Start Simulation (Simulated Buyer Opens)</span>
+                  <span>
+                    {scenarioMode === "immediate_buyer"
+                      ? "Start Simulation (Simulated Buyer Opens with Request)"
+                      : "Start Simulation (Simulated Buyer Opens)"}
+                  </span>
                 </button>
 
                 {/* Or suggested salesperson openers */}
@@ -699,35 +890,71 @@ export function RehearsalPanel({
                     Or Initiate as Salesperson:
                   </span>
                   <div className="space-y-2">
-                    <button
-                      onClick={() =>
-                        handleSendMessage(
-                          `Hi ${lead.name.split(" ")[0]}, regarding your interest in ${lead.location}, I noticed your inquiry mentioned ${selectedObjection.label.toLowerCase()}. I wanted to directly share how our project handles this.`
-                        )
-                      }
-                      disabled={loading}
-                      className="w-full text-left p-2.5 rounded-lg border border-edge bg-raised/40 hover:bg-raised text-xs text-muted hover:text-ink transition-colors flex items-center justify-between group"
-                    >
-                      <span className="line-clamp-2">
-                        &ldquo;Hi {lead.name.split(" ")[0]}, I wanted to directly address your question about {selectedObjection.label.toLowerCase()}...&rdquo;
-                      </span>
-                      <ArrowRight className="w-3.5 h-3.5 text-subtle group-hover:text-ink shrink-0 ml-2" />
-                    </button>
+                    {scenarioMode === "immediate_buyer" ? (
+                      <>
+                        <button
+                          onClick={() =>
+                            handleSendMessage(
+                              `Hi ${lead.name.split(" ")[0]}, we have verified ${lead.propertyRequirement} units ready for immediate inspection in ${lead.location}. I have reserved walkthrough windows this Saturday at 11:00 AM or Sunday at 3:30 PM. Which time works best for you?`
+                            )
+                          }
+                          disabled={loading}
+                          className="w-full text-left p-2.5 rounded-lg border border-edge bg-raised/40 hover:bg-raised text-xs text-muted hover:text-ink transition-colors flex items-center justify-between group"
+                        >
+                          <span className="line-clamp-2">
+                            &ldquo;Hi {lead.name.split(" ")[0]}, we have verified {lead.propertyRequirement} units ready... I have reserved walkthrough windows Saturday 11 AM or Sunday 3:30 PM...&rdquo;
+                          </span>
+                          <ArrowRight className="w-3.5 h-3.5 text-subtle group-hover:text-ink shrink-0 ml-2" />
+                        </button>
 
-                    <button
-                      onClick={() =>
-                        handleSendMessage(
-                          `Hello ${lead.name.split(" ")[0]}, thank you for reaching out! We have two move-in ready ${lead.propertyRequirement} units matching your budget in ${lead.location}.`
-                        )
-                      }
-                      disabled={loading}
-                      className="w-full text-left p-2.5 rounded-lg border border-edge bg-raised/40 hover:bg-raised text-xs text-muted hover:text-ink transition-colors flex items-center justify-between group"
-                    >
-                      <span className="line-clamp-2">
-                        &ldquo;Hello {lead.name.split(" ")[0]}, we have verified units matching your budget...&rdquo;
-                      </span>
-                      <ArrowRight className="w-3.5 h-3.5 text-subtle group-hover:text-ink shrink-0 ml-2" />
-                    </button>
+                        <button
+                          onClick={() =>
+                            handleSendMessage(
+                              `Hello ${lead.name.split(" ")[0]}, thank you for reaching out! I've prepared the full floor plan and pricing sheet for ${lead.location}. Let's schedule a 20-minute private walkthrough this weekend.`
+                            )
+                          }
+                          disabled={loading}
+                          className="w-full text-left p-2.5 rounded-lg border border-edge bg-raised/40 hover:bg-raised text-xs text-muted hover:text-ink transition-colors flex items-center justify-between group"
+                        >
+                          <span className="line-clamp-2">
+                            &ldquo;Hello {lead.name.split(" ")[0]}, I&apos;ve prepared the full floor plan and pricing sheet... Let&apos;s schedule a private walkthrough this weekend...&rdquo;
+                          </span>
+                          <ArrowRight className="w-3.5 h-3.5 text-subtle group-hover:text-ink shrink-0 ml-2" />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() =>
+                            handleSendMessage(
+                              `Hi ${lead.name.split(" ")[0]}, regarding your interest in ${lead.location}, I noticed your inquiry mentioned ${selectedObjection.label.toLowerCase()}. I wanted to directly share how our project handles this.`
+                            )
+                          }
+                          disabled={loading}
+                          className="w-full text-left p-2.5 rounded-lg border border-edge bg-raised/40 hover:bg-raised text-xs text-muted hover:text-ink transition-colors flex items-center justify-between group"
+                        >
+                          <span className="line-clamp-2">
+                            &ldquo;Hi {lead.name.split(" ")[0]}, I wanted to directly address your question about {selectedObjection.label.toLowerCase()}...&rdquo;
+                          </span>
+                          <ArrowRight className="w-3.5 h-3.5 text-subtle group-hover:text-ink shrink-0 ml-2" />
+                        </button>
+
+                        <button
+                          onClick={() =>
+                            handleSendMessage(
+                              `Hello ${lead.name.split(" ")[0]}, thank you for reaching out! We have two move-in ready ${lead.propertyRequirement} units matching your budget in ${lead.location}.`
+                            )
+                          }
+                          disabled={loading}
+                          className="w-full text-left p-2.5 rounded-lg border border-edge bg-raised/40 hover:bg-raised text-xs text-muted hover:text-ink transition-colors flex items-center justify-between group"
+                        >
+                          <span className="line-clamp-2">
+                            &ldquo;Hello {lead.name.split(" ")[0]}, we have verified units matching your budget...&rdquo;
+                          </span>
+                          <ArrowRight className="w-3.5 h-3.5 text-subtle group-hover:text-ink shrink-0 ml-2" />
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -747,7 +974,7 @@ export function RehearsalPanel({
                   <div
                     className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 text-[10px] font-bold shadow-2xs ${
                       isSalesperson
-                        ? "bg-brand text-accent font-semibold"
+                        ? "bg-brand text-brand-fg font-semibold"
                         : "bg-violet-600/10 text-violet-600 dark:text-violet-400 border border-violet-500/20"
                     }`}
                   >
@@ -757,7 +984,9 @@ export function RehearsalPanel({
                   <div className={`space-y-1 ${isSalesperson ? "items-end text-right" : "items-start text-left"}`}>
                     <div className="flex items-center gap-1.5 text-[10px] text-subtle">
                       <span className="font-semibold text-muted">
-                        {isSalesperson ? "You (Salesperson)" : `Simulated Buyer (${lead.name})`}
+                        {isSalesperson
+                          ? "You (Salesperson)"
+                          : `Simulated Buyer (${lead.name}${scenarioMode === "immediate_buyer" ? " — Ready to Move Forward" : ""})`}
                       </span>
                       <span>•</span>
                       <span>
@@ -771,7 +1000,7 @@ export function RehearsalPanel({
                     <div
                       className={`px-3.5 py-2.5 rounded-xl text-xs sm:text-sm leading-relaxed ${
                         isSalesperson
-                          ? "bg-brand text-accent rounded-tr-xs shadow-xs font-medium"
+                          ? "bg-brand text-brand-fg rounded-tr-xs shadow-xs font-medium"
                           : "bg-panel text-ink rounded-tl-xs border border-edge shadow-xs"
                       }`}
                     >
@@ -793,6 +1022,8 @@ export function RehearsalPanel({
                     <span className="text-[11px] text-subtle italic">
                       {loadingMode === "coach"
                         ? "AI Sales Coach evaluating rehearsal transcript..."
+                        : scenarioMode === "immediate_buyer"
+                        ? `Simulating ${lead.name}'s buyer response (Ready to Move Forward)...`
                         : `Simulating ${lead.name}'s buyer response...`}
                     </span>
                     <div className="flex gap-1">
@@ -833,7 +1064,11 @@ export function RehearsalPanel({
                 rows={2}
                 placeholder={
                   messages.length === 0
-                    ? `Type your opening statement to ${lead.name}...`
+                    ? scenarioMode === "immediate_buyer"
+                      ? `Type your opening statement to high-intent buyer ${lead.name}...`
+                      : `Type your opening statement to ${lead.name}...`
+                    : scenarioMode === "immediate_buyer"
+                    ? `Type your response to ${lead.name} to advance next steps... (Enter to send)`
                     : `Type your response to ${lead.name}'s objection... (Enter to send)`
                 }
                 className="w-full px-3 py-2 text-xs sm:text-sm bg-transparent border-0 outline-hidden resize-none placeholder:text-subtle text-ink disabled:opacity-50"

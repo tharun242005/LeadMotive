@@ -1,5 +1,5 @@
 // ============================================================================
-// SignalDesk — Authoritative Deterministic Lead Priority Scoring (4-Factor Model)
+// LeadMotive — Authoritative Deterministic Lead Priority Scoring (4-Factor Model)
 // ============================================================================
 //
 // The score is computed entirely deterministically from the lead's own fields.
@@ -13,9 +13,9 @@
 // 4. Engagement depth           Max 15 pts   (15, 10, 4, 0 based on conversation depth)
 //
 // Priority Bands:
-//   Hot   75–100   Immediate high-intent action window
-//   Warm  45–74    Qualified buyer in active evaluation
-//   Cold  0–44     Early research or uncommitted inquiry
+//   Act Now    75–100   Immediate high-intent action window (internal: "hot")
+//   Follow Up  45–74    Qualified buyer in active evaluation (internal: "warm")
+//   Nurture    0–44     Early research or uncommitted inquiry (internal: "cold")
 //
 // NOTE: This score is a rule-based prioritization aid. It is NOT a statistically
 // calibrated probability of conversion.
@@ -316,7 +316,150 @@ export function computePriority(lead: {
 }
 
 /**
- * Priority band colors and tokens for UI badges.
+ * Canonical user-facing display labels for priority bands.
+ * Maps internal enum keys ("hot" | "warm" | "cold") to action-oriented terminology:
+ * - 75–100: "Act Now"
+ * - 45–74: "Follow Up"
+ * - 0–44: "Nurture"
+ *
+ * NOTE: These labels represent rule-based priority heuristics, not a statistical conversion guarantee.
+ */
+export const PRIORITY_BAND_LABELS: Record<PriorityBand, string> = {
+  hot: "Act Now",
+  warm: "Follow Up",
+  cold: "Nurture",
+} as const;
+
+/**
+ * Canonical user-facing display label with score:
+ * e.g., formatPriorityDisplay("hot", 89) -> "Act Now · 89"
+ */
+export function formatPriorityDisplay(band: PriorityBand, score: number): string {
+  return `${PRIORITY_BAND_LABELS[band]} · ${score}`;
+}
+
+/**
+ * Safe presentation-layer normalisation for legacy assistant-generated priority text.
+ * Replaces obsolete priority terminology ("Hot", "Warm", "Cold") in assistant explanations
+ * with canonical labels ("Act Now", "Follow Up", "Nurture").
+ *
+ * MUST ONLY be applied to assistant-authored text, NEVER to user messages, raw customer inquiries,
+ * or unrelated content.
+ */
+export function normalizeAssistantPriorityText(text: string): string {
+  if (!text) return text;
+
+  let result = text;
+
+  // 1. Full threshold sentence patterns
+  result = result.replace(
+    /(?:A score of )?75\+\s+earns\s+\*?\*?Hot\*?\*?\s+status[;,]?\s*45[–-]74\s+are\s+\*?\*?Warm\*?\*?[.,]?/gi,
+    "Scores from 75–100 are classified as **Act Now**, scores from 45–74 as **Follow Up**, and scores from 0–44 as **Nurture**."
+  );
+
+  result = result.replace(
+    /A score of 75\+\s+earns\s+\*?\*?Act Now\*?\*?\s+status for immediate engagement\.\s*Scores between 45[–-]74 are\s+\*?\*?Follow Up\*?\*?[^.]*\.\s*Scores of 0[–-]44 are\s+\*?\*?Nurture\*?\*?[^.]*\./gi,
+    "Scores from 75–100 are classified as **Act Now**, scores from 45–74 as **Follow Up**, and scores from 0–44 as **Nurture**."
+  );
+
+  // 2. Bold uppercase band mentions in assessed statements
+  result = result.replace(/\bassessed as \*\*HOT\*\*/g, "assessed as **ACT NOW**");
+  result = result.replace(/\bassessed as \*\*WARM\*\*/g, "assessed as **FOLLOW UP**");
+  result = result.replace(/\bassessed as \*\*COLD\*\*/g, "assessed as **NURTURE**");
+
+  // 3. Plain assessed as statements
+  result = result.replace(/\bassessed as HOT\b/g, "assessed as Act Now");
+  result = result.replace(/\bassessed as WARM\b/g, "assessed as Follow Up");
+  result = result.replace(/\bassessed as COLD\b/g, "assessed as Nurture");
+
+  // 4. Status mentions (e.g. "**Hot** status", "Hot status")
+  result = result.replace(/\b\*\*Hot\*\*\s+status\b/g, "**Act Now** status");
+  result = result.replace(/\b\*\*Warm\*\*\s+status\b/g, "**Follow Up** status");
+  result = result.replace(/\b\*\*Cold\*\*\s+status\b/g, "**Nurture** status");
+  result = result.replace(/\bHot\s+status\b/g, "Act Now status");
+  result = result.replace(/\bWarm\s+status\b/g, "Follow Up status");
+  result = result.replace(/\bCold\s+status\b/g, "Nurture status");
+
+  // 5. Band with score range e.g., "Hot (75–100)", "Warm (45–74)", "Cold (0–44)"
+  result = result.replace(/\bHot\s*\((?:75[–-]100|≥\s*75|75\+)\)/gi, "Act Now (75–100)");
+  result = result.replace(/\bWarm\s*\((?:45[–-]74)\)/gi, "Follow Up (45–74)");
+  result = result.replace(/\bCold\s*\((?:0[–-]44)\)/gi, "Nurture (0–44)");
+
+  // 6. Priority band is Hot/Warm/Cold
+  result = result.replace(/Priority band is \*\*?Hot\*\*?/gi, "Priority band is Act Now");
+  result = result.replace(/Priority band is \*\*?Warm\*\*?/gi, "Priority band is Follow Up");
+  result = result.replace(/Priority band is \*\*?Cold\*\*?/gi, "Priority band is Nurture");
+
+  // 7. HOT (89) or HOT (89/100) or HOT (score)
+  result = result.replace(/\bHOT\s*\((\d{1,3})(?:\/100)?(?:\s*pts)?\)/g, "Act Now · $1");
+  result = result.replace(/\bWARM\s*\((\d{1,3})(?:\/100)?(?:\s*pts)?\)/g, "Follow Up · $1");
+  result = result.replace(/\bCOLD\s*\((\d{1,3})(?:\/100)?(?:\s*pts)?\)/g, "Nurture · $1");
+
+  // 8. Lead classifications like "Hot lead" in priority context
+  result = result.replace(/\bHot lead\b/g, "Act Now lead");
+  result = result.replace(/\bWarm lead\b/g, "Follow Up lead");
+  result = result.replace(/\bCold lead\b/g, "Nurture lead");
+
+  return result;
+}
+
+export interface PriorityStyle {
+  label: string;
+  badgeClass: string;
+  badgeCompactClass: string;
+  dotClass: string;
+  textClass: string;
+  bgClass: string;
+  borderClass: string;
+  day: { text: string; bg: string; border: string };
+  night: { text: string; bg: string; border: string };
+}
+
+/**
+ * Authoritative Canonical Priority Styles & Color System
+ *
+ * Act Now:    RED     (Day: #B42318 on #FEE4E2, border #FDA29B / Night: #FF8A80 on #421D22, border #87333A)
+ * Follow Up:  AMBER   (Day: #9A4D00 on #FFF0CC, border #F5C26B / Night: #FFC166 on #3B2A15, border #80571D)
+ * Nurture:    BLUE    (Day: #175CD3 on #EAF2FF, border #A6C8FF / Night: #8DBBFF on #172D4D, border #355E91)
+ */
+export const PRIORITY_STYLES: Record<PriorityBand, PriorityStyle> = {
+  hot: {
+    label: PRIORITY_BAND_LABELS.hot,
+    badgeClass: "badge-priority-hot shadow-xs",
+    badgeCompactClass: "badge-priority-hot",
+    dotClass: "bg-hot",
+    textClass: "text-hot",
+    bgClass: "bg-hot-fill",
+    borderClass: "border-hot-border",
+    day: { text: "#B42318", bg: "#FEE4E2", border: "#FDA29B" },
+    night: { text: "#FF8A80", bg: "#421D22", border: "#87333A" },
+  },
+  warm: {
+    label: PRIORITY_BAND_LABELS.warm,
+    badgeClass: "badge-priority-warm shadow-xs",
+    badgeCompactClass: "badge-priority-warm",
+    dotClass: "bg-warm",
+    textClass: "text-warm",
+    bgClass: "bg-warm-fill",
+    borderClass: "border-warm-border",
+    day: { text: "#9A4D00", bg: "#FFF0CC", border: "#F5C26B" },
+    night: { text: "#FFC166", bg: "#3B2A15", border: "#80571D" },
+  },
+  cold: {
+    label: PRIORITY_BAND_LABELS.cold,
+    badgeClass: "badge-priority-cold shadow-xs",
+    badgeCompactClass: "badge-priority-cold",
+    dotClass: "bg-cold",
+    textClass: "text-cold",
+    bgClass: "bg-cold-fill",
+    borderClass: "border-cold-border",
+    day: { text: "#175CD3", bg: "#EAF2FF", border: "#A6C8FF" },
+    night: { text: "#8DBBFF", bg: "#172D4D", border: "#355E91" },
+  },
+};
+
+/**
+ * Priority band colors, tokens, and canonical labels for UI badges.
  */
 export function priorityBandColor(band: PriorityBand): {
   bg: string;
@@ -324,31 +467,17 @@ export function priorityBandColor(band: PriorityBand): {
   dot: string;
   border: string;
   label: string;
+  day: { text: string; bg: string; border: string };
+  night: { text: string; bg: string; border: string };
 } {
-  switch (band) {
-    case "hot":
-      return {
-        bg: "rgba(239, 68, 68, 0.12)",
-        text: "var(--sd-danger, #ef4444)",
-        dot: "#ef4444",
-        border: "rgba(239, 68, 68, 0.28)",
-        label: "Hot",
-      };
-    case "warm":
-      return {
-        bg: "rgba(245, 158, 11, 0.12)",
-        text: "var(--sd-warm, #f59e0b)",
-        dot: "#f59e0b",
-        border: "rgba(245, 158, 11, 0.28)",
-        label: "Warm",
-      };
-    case "cold":
-      return {
-        bg: "rgba(100, 116, 139, 0.12)",
-        text: "var(--sd-subtle, #64748b)",
-        dot: "#64748b",
-        border: "rgba(100, 116, 139, 0.28)",
-        label: "Cold",
-      };
-  }
+  const style = PRIORITY_STYLES[band];
+  return {
+    bg: "var(--lm-" + (band === "hot" ? "hot" : band === "warm" ? "warm" : "cold") + "-bg)",
+    text: "var(--lm-" + (band === "hot" ? "hot" : band === "warm" ? "warm" : "cold") + ")",
+    dot: "var(--lm-" + (band === "hot" ? "hot" : band === "warm" ? "warm" : "cold") + ")",
+    border: "var(--lm-" + (band === "hot" ? "hot" : band === "warm" ? "warm" : "cold") + "-border)",
+    label: style.label,
+    day: style.day,
+    night: style.night,
+  };
 }

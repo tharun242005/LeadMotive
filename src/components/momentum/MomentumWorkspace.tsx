@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import {
   Sparkles,
+  Zap,
   ArrowLeft,
   RefreshCw,
   Clock,
@@ -29,6 +30,7 @@ import type {
 import { formatINR, formatTimeline } from "@/lib/utils/format";
 import { StepCard } from "./StepCard";
 import { PlanObjectiveModal } from "./PlanObjectiveModal";
+import { PRIORITY_BAND_LABELS, PRIORITY_STYLES } from "@/lib/leads/scoring";
 
 interface MomentumWorkspaceProps {
   leads: Lead[];
@@ -43,9 +45,9 @@ interface MomentumWorkspaceProps {
 }
 
 const BAND_CONFIG = {
-  hot: { label: "Hot", icon: Flame, class: "bg-hot-fill text-hot border border-hot/20" },
-  warm: { label: "Warm", icon: Minus, class: "bg-warm-fill text-warm border border-warm/20" },
-  cold: { label: "Cold", icon: Snowflake, class: "bg-cold-fill text-cold border border-cold/20" },
+  hot: { label: PRIORITY_BAND_LABELS.hot, icon: Flame, class: PRIORITY_STYLES.hot.badgeClass },
+  warm: { label: PRIORITY_BAND_LABELS.warm, icon: Minus, class: PRIORITY_STYLES.warm.badgeClass },
+  cold: { label: PRIORITY_BAND_LABELS.cold, icon: Snowflake, class: PRIORITY_STYLES.cold.badgeClass },
 };
 
 export function MomentumWorkspace({
@@ -165,7 +167,7 @@ export function MomentumWorkspace({
 
   const handleCopySummary = () => {
     if (!activePlan) return;
-    const text = `SIGNALDESK MOMENTUM PLAN: ${activePlan.planTitle}
+    const text = `LEADMOTIVE MOMENTUM PLAN: ${activePlan.planTitle}
 Customer: ${selectedLead?.name} (${selectedLead?.location})
 Objective: ${activePlan.objectiveLabel}
 Progress: ${progressStats.completed}/${progressStats.total} steps completed (${progressStats.percent}%)
@@ -206,7 +208,7 @@ ${activePlan.steps.map((s) => `${s.sequence}. [${s.status.toUpperCase()}] ${s.ti
             </button>
 
             <div className="flex items-center gap-2 min-w-0">
-              <div className="w-8 h-8 rounded-lg bg-brand flex items-center justify-center text-accent shrink-0">
+              <div className="w-8 h-8 rounded-lg bg-brand flex items-center justify-center text-brand-fg shrink-0">
                 <Compass className="w-4 h-4" />
               </div>
               <div className="min-w-0">
@@ -278,7 +280,7 @@ ${activePlan.steps.map((s) => `${s.sequence}. [${s.status.toUpperCase()}] ${s.ti
                   setIsAdaptationMode(false);
                   setIsConfigModalOpen(true);
                 }}
-                className="px-4 py-1.5 text-xs font-semibold bg-brand text-accent rounded-md hover:opacity-90 transition-opacity flex items-center gap-1.5 shadow-xs"
+                className="px-4 py-1.5 text-xs font-semibold bg-brand text-brand-fg rounded-md hover:opacity-90 transition-opacity flex items-center gap-1.5 shadow-xs"
               >
                 <Sparkles className="w-3.5 h-3.5" />
                 <span>Generate Plan</span>
@@ -307,7 +309,7 @@ ${activePlan.steps.map((s) => `${s.sequence}. [${s.status.toUpperCase()}] ${s.ti
           <div className="flex items-center gap-2">
             <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold ${band.class}`}>
               <BandIcon className="w-3 h-3" />
-              <span>{selectedLead.priority.total} {band.label.toUpperCase()}</span>
+              <span>{band.label} · {selectedLead.priority.total}</span>
             </div>
           </div>
         </div>
@@ -335,7 +337,7 @@ ${activePlan.steps.map((s) => `${s.sequence}. [${s.status.toUpperCase()}] ${s.ti
         {/* ── Empty State if no plan ── */}
         {!activePlan ? (
           <div className="p-12 text-center rounded-2xl border-2 border-dashed border-edge bg-panel flex flex-col items-center justify-center anim-fade-up">
-            <div className="w-12 h-12 rounded-xl bg-brand flex items-center justify-center text-accent mb-4 shadow-sm">
+            <div className="w-12 h-12 rounded-xl bg-brand flex items-center justify-center text-brand-fg mb-4 shadow-sm">
               <Compass className="w-6 h-6" />
             </div>
             <h2 className="text-base font-bold text-ink mb-1">
@@ -349,7 +351,7 @@ ${activePlan.steps.map((s) => `${s.sequence}. [${s.status.toUpperCase()}] ${s.ti
                 setIsAdaptationMode(false);
                 setIsConfigModalOpen(true);
               }}
-              className="px-5 py-2.5 rounded-lg text-xs font-semibold bg-brand text-accent hover:opacity-90 transition-opacity flex items-center gap-2 shadow-sm"
+              className="px-5 py-2.5 rounded-lg text-xs font-semibold bg-brand text-brand-fg hover:opacity-90 transition-opacity flex items-center gap-2 shadow-sm"
             >
               <Sparkles className="w-4 h-4" />
               <span>Generate Momentum Plan</span>
@@ -358,12 +360,25 @@ ${activePlan.steps.map((s) => `${s.sequence}. [${s.status.toUpperCase()}] ${s.ti
         ) : (
           <>
             {/* ── Telemetry & Ground Truth Banner ── */}
-            {activePlan.meta?.mode === "live" ? (
+            {activePlan.meta?.mode === "live" && activePlan.meta.provider === "groq" ? (
+              <div className="flex items-center justify-between px-3.5 py-2 text-xs bg-brand/10 text-ink rounded-lg border border-brand/25 anim-fade-in">
+                <div className="flex items-center gap-2">
+                  <Zap className="w-3.5 h-3.5 shrink-0 text-brand" />
+                  <span className="font-semibold">
+                    Live AI · Groq Strategy ({activePlan.meta.model || "openai/gpt-oss-20b"})
+                  </span>
+                  {activePlan.meta.primaryFailureReason && (
+                    <span className="text-muted text-[11px]">({activePlan.meta.primaryFailureReason})</span>
+                  )}
+                </div>
+                <span className="font-mono text-[11px] text-subtle">{activePlan.meta.latencyMs}ms latency</span>
+              </div>
+            ) : activePlan.meta?.mode === "live" ? (
               <div className="flex items-center justify-between px-3.5 py-2 text-xs bg-accent-subtle text-accent rounded-lg border border-accent/25 anim-fade-in">
                 <div className="flex items-center gap-2">
                   <Sparkles className="w-3.5 h-3.5 shrink-0 text-accent" />
                   <span className="font-semibold">
-                    Live Gemini Strategy ({activePlan.meta.model || "gemini-3.8-flash"})
+                    Live Gemini Strategy ({activePlan.meta.model || "gemini-3.5-flash-lite"})
                   </span>
                 </div>
                 <span className="font-mono text-[11px] text-subtle">{activePlan.meta.latencyMs}ms latency</span>

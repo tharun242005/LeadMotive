@@ -126,7 +126,7 @@ export function PlanObjectiveModal({
         {/* Header */}
         <div className="px-6 py-4 border-b border-edge flex items-center justify-between bg-raised/50">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-brand flex items-center justify-center text-accent">
+            <div className="w-8 h-8 rounded-lg bg-brand flex items-center justify-center text-brand-fg">
               <Sparkles className="w-4 h-4" />
             </div>
             <div>
@@ -278,11 +278,11 @@ export function PlanObjectiveModal({
             <button
               type="submit"
               disabled={isGenerating || (isAdaptationMode && !adaptationReason.trim())}
-              className="px-5 py-2 text-xs font-semibold bg-brand text-accent rounded-md hover:opacity-90 transition-opacity flex items-center gap-2 shadow-xs disabled:opacity-50"
+              className="px-5 py-2 text-xs font-semibold bg-brand text-brand-fg rounded-md hover:opacity-90 transition-opacity flex items-center gap-2 shadow-xs disabled:opacity-50"
             >
               {isGenerating ? (
                 <>
-                  <div className="w-3.5 h-3.5 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+                  <div className="w-3.5 h-3.5 border-2 border-brand-fg border-t-transparent rounded-full animate-spin" />
                   <span>{isAdaptationMode ? "Adapting Plan..." : "Generating Strategy..."}</span>
                 </>
               ) : (

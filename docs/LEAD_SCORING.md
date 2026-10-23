@@ -1,15 +1,15 @@
-# SignalDesk — Authoritative Lead Prioritisation & Scoring Methodology
+# LeadMotive — Authoritative Lead Prioritisation & Scoring Methodology
 
 ## 1. Why Deterministic Scoring?
 
-A core design decision in SignalDesk is separating **Quantitative Priority Scoring** from **Qualitative AI Enrichment**.
+A core design decision in LeadMotive is separating **Quantitative Priority Scoring** from **Qualitative AI Enrichment**.
 
 In high-stakes real estate sales, pure LLM-based scoring suffers from three critical flaws:
 1. **Non-deterministic drift**: The same lead scored at 9:00 AM might score 82 and at 2:00 PM score 71 due to model temperature and context shifts.
 2. **Latency penalty**: Calculating a queue of 20 leads via LLM API calls introduces 3–8 seconds of blocking latency.
 3. **Unexplainability to non-technical buyers**: When a VP of Sales asks *"Why is this buyer ranked above that buyer?"*, saying *"Because the neural net thought so"* destroys trust.
 
-SignalDesk solves this by calculating a **100-point deterministic score** instantaneously in the client upon intake. The AI model then enriches the lead with contextual analysis, intent classification, objection handling, and response drafts.
+LeadMotive solves this by calculating a **100-point deterministic score** instantaneously in the client upon intake. The AI model then enriches the lead with contextual analysis, intent classification, objection handling, and response drafts.
 
 > **CRITICAL NOTE**: The score is an explainable, rule-based prioritization aid. It is **NOT** a statistically calibrated probability of conversion.
 
@@ -70,15 +70,15 @@ Evaluates communicative substance based strictly on conversation depth (avoiding
 
 ## 4. Priority Bands
 
-- **🔥 Hot Lead (Score 75–100)**: Immediate action window, strong financial commitment, concrete criteria. Target response time: **< 15 minutes**.
-- **⚡ Warm Lead (Score 45–74)**: Qualified buyer in active evaluation phase. Target response time: **< 2 hours**.
-- **❄️ Cold Lead (Score 0–44)**: Vague inquiry, distant exploratory timeline, or uncommitted budget. Enrolled in automated nurture drip.
+- **🔥 Act Now (Score 75–100)**: Immediate action window, strong financial commitment, concrete criteria. Target response time: **< 15 minutes** (internal compatibility enum: `"hot"`).
+- **⚡ Follow Up (Score 45–74)**: Qualified buyer in active evaluation phase. Target response time: **< 2 hours** (internal compatibility enum: `"warm"`).
+- **❄️ Nurture (Score 0–44)**: Vague inquiry, distant exploratory timeline, or uncommitted budget. Enrolled in nurture sequence (internal compatibility enum: `"cold"`).
 
 ---
 
 ## 5. UI Transparency ("Why this score?")
 
-SignalDesk displays an interactive breakdown modal for every lead in both the homepage preview and the `/workspace` application:
+LeadMotive displays an interactive breakdown modal for every lead in both the homepage preview and the `/workspace` application:
 - Visual progress bars for all 4 dimensions.
 - Mathematical point contribution (e.g. `30/30 pts`, `25/25 pts`).
 - Explicit audit trail detailing the exact reasons points were awarded or withheld.

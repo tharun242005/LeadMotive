@@ -4,7 +4,7 @@ import { useState, useCallback } from "react";
 import { X, Loader2 } from "lucide-react";
 import type { Lead, BuyingTimeline } from "@/types/lead";
 import { computePriority } from "@/lib/leads/scoring";
-import { generateId } from "@/lib/utils/format";
+import { generateId, parseBudgetWithValidation } from "@/lib/utils/format";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -70,7 +70,12 @@ export function LeadIntakeForm({ onSubmit, onClose }: LeadIntakeFormProps) {
     if (!data.name.trim()) e.name = "Name is required";
     if (!data.location.trim()) e.location = "Location is required";
     if (!data.propertyRequirement.trim()) e.propertyRequirement = "Property requirement is required";
-    if (data.budget && isNaN(parseBudget(data.budget))) e.budget = "Enter a valid number (e.g. 85,00,000 or 85L)";
+    if (data.budget) {
+      const parsed = parseBudgetWithValidation(data.budget);
+      if (parsed.error) {
+        e.budget = parsed.error;
+      }
+    }
     if (!data.customerMessage.trim()) e.customerMessage = "Customer message is required";
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -81,7 +86,8 @@ export function LeadIntakeForm({ onSubmit, onClose }: LeadIntakeFormProps) {
     if (!validate() || submitting) return;
     setSubmitting(true);
 
-    const budgetNum = parseBudget(data.budget) || 0;
+    const budgetParsed = parseBudgetWithValidation(data.budget);
+    const budgetNum = isNaN(budgetParsed.value) ? 0 : budgetParsed.value;
     const now = new Date().toISOString();
 
     const lead: Lead = {
@@ -209,10 +215,13 @@ export function LeadIntakeForm({ onSubmit, onClose }: LeadIntakeFormProps) {
             <button
               type="submit"
               disabled={submitting}
-              className="px-4 py-2 text-sm font-medium bg-accent text-accent-fg rounded-md hover:opacity-90 transition-opacity disabled:opacity-50"
+              className="px-5 py-2 text-sm font-semibold bg-brand text-brand-fg rounded-md hover:opacity-90 transition-all shadow-xs disabled:opacity-50"
             >
               {submitting ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
+                <span className="flex items-center gap-1.5">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Saving…
+                </span>
               ) : (
                 "Save Lead"
               )}
@@ -223,27 +232,30 @@ export function LeadIntakeForm({ onSubmit, onClose }: LeadIntakeFormProps) {
         <style jsx>{`
           .sd-input {
             width: 100%;
-            padding: 0.5rem 0.75rem;
+            padding: 0.55rem 0.85rem;
             font-size: 0.875rem;
-            background: var(--sd-canvas);
-            border: 1px solid var(--sd-border);
+            background: var(--lm-canvas);
+            border: 1px solid var(--lm-border);
             border-radius: 6px;
-            color: var(--sd-text-primary);
-            transition: border-color 120ms, box-shadow 120ms;
+            color: var(--lm-text-primary);
+            transition: border-color 140ms, box-shadow 140ms;
           }
           .sd-input:focus {
             outline: none;
-            border-color: var(--sd-brand);
-            box-shadow: 0 0 0 2px rgba(36, 75, 55, 0.12);
+            border-color: var(--lm-brand);
+            box-shadow: 0 0 0 2px rgba(185, 79, 52, 0.2);
+          }
+          [data-theme="dark"] .sd-input:focus {
+            box-shadow: 0 0 0 2px rgba(39, 214, 232, 0.25);
           }
           .sd-input::placeholder {
-            color: var(--sd-text-tertiary);
+            color: var(--lm-text-tertiary);
           }
           .sd-input-error {
-            border-color: var(--sd-error);
+            border-color: var(--lm-error);
           }
           .sd-input-error:focus {
-            box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.12);
+            box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.2);
           }
         `}</style>
       </div>
@@ -275,24 +287,4 @@ function Field({
       {error && <p className="text-[11px] text-danger mt-0.5">{error}</p>}
     </label>
   );
-}
-
-// ---------------------------------------------------------------------------
-// Budget parser: handles "85L", "1.2Cr", "85,00,000", "8500000"
-// ---------------------------------------------------------------------------
-function parseBudget(raw: string): number {
-  const s = raw.trim().replace(/,/g, "").replace(/₹/g, "");
-  if (!s) return 0;
-
-  // "1.2Cr" or "1.2 cr"
-  const crMatch = s.match(/^([\d.]+)\s*cr(ore)?$/i);
-  if (crMatch) return parseFloat(crMatch[1]) * 1_00_00_000;
-
-  // "85L" or "85 lakh"
-  const lMatch = s.match(/^([\d.]+)\s*(l|lakh|lac|lacs)$/i);
-  if (lMatch) return parseFloat(lMatch[1]) * 1_00_000;
-
-  // Plain number
-  const num = parseFloat(s);
-  return isNaN(num) ? NaN : num;
 }

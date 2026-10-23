@@ -29,7 +29,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!body.name || typeof body.name !== "string" || !body.name.trim()) {
+    const rawBody = body as unknown as Record<string, unknown>;
+    const leadData = (rawBody && typeof rawBody === "object" && rawBody.lead && typeof rawBody.lead === "object")
+      ? (rawBody.lead as Record<string, unknown>)
+      : rawBody;
+
+    const rawName = typeof leadData.name === "string" ? leadData.name.trim() : "";
+    if (!rawName) {
       return NextResponse.json(
         {
           error: "Missing required field: name",
@@ -40,7 +46,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (body.name.trim().length > 100) {
+    if (rawName.length > 100) {
       return NextResponse.json(
         {
           error: "Customer name exceeds maximum allowed length of 100 characters.",
@@ -51,7 +57,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!body.customerMessage || typeof body.customerMessage !== "string" || !body.customerMessage.trim()) {
+    const rawMessage = typeof leadData.customerMessage === "string" ? leadData.customerMessage.trim() : "";
+    if (!rawMessage) {
       return NextResponse.json(
         {
           error: "Missing required field: customerMessage",
@@ -62,7 +69,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (body.customerMessage.trim().length > 4000) {
+    if (rawMessage.length > 4000) {
       return NextResponse.json(
         {
           error: "Customer message exceeds maximum allowed length of 4000 characters.",
@@ -73,7 +80,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (body.location && typeof body.location === "string" && body.location.trim().length > 150) {
+    const rawLocation = typeof leadData.location === "string" ? leadData.location.trim() : "";
+    if (rawLocation.length > 150) {
       return NextResponse.json(
         {
           error: "Location field exceeds maximum allowed length of 150 characters.",
@@ -84,7 +92,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (body.propertyRequirement && typeof body.propertyRequirement === "string" && body.propertyRequirement.trim().length > 250) {
+    const rawReq = typeof leadData.propertyRequirement === "string" ? leadData.propertyRequirement.trim() : "";
+    if (rawReq.length > 250) {
       return NextResponse.json(
         {
           error: "Property requirement field exceeds maximum allowed length of 250 characters.",
@@ -95,13 +104,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const rawBudget = typeof leadData.budget === "number" && !isNaN(leadData.budget) ? Math.max(0, leadData.budget) : 0;
+    const rawTimeline = typeof leadData.buyingTimeline === "string" ? leadData.buyingTimeline.trim() : "not_specified";
+
     const boundedLead: AnalyzeLeadRequest = {
-      name: body.name.trim(),
-      location: (body.location || "").trim(),
-      propertyRequirement: (body.propertyRequirement || "").trim(),
-      budget: typeof body.budget === "number" && !isNaN(body.budget) ? Math.max(0, body.budget) : 0,
-      buyingTimeline: (body.buyingTimeline || "not_specified").trim(),
-      customerMessage: body.customerMessage.trim(),
+      name: rawName,
+      location: rawLocation,
+      propertyRequirement: rawReq,
+      budget: rawBudget,
+      buyingTimeline: rawTimeline,
+      customerMessage: rawMessage,
     };
 
     const response = await performLeadAnalysis(boundedLead);

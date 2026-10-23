@@ -141,3 +141,87 @@ test("validateAnalysisResponse bounds intent confidence and clamps invalid enums
   assert.equal(result.objections[0].severity, "medium"); // Defaulted to medium
   assert.equal(result.recommendedAction.type, "follow_up"); // Defaulted to follow_up
 });
+
+test("Factual grounding: Priya Sharma analysis preserves customer facts without inventing Diwali or unverified inventory", () => {
+  const priyaLead = {
+    name: "Priya Sharma",
+    location: "Whitefield",
+    propertyRequirement: "3 BHK",
+    budget: 18000000,
+    buyingTimeline: "immediate",
+    customerMessage: "Ready to visit this Saturday with my family. Need 3BHK near ITPL with possession by December.",
+  };
+
+  // Schema validation sanitizes if model outputs unsupported claims
+  const hallucinatedModelOutput = {
+    summary: "Priya wants to complete registration before Diwali and move into a 3BHK near ITPL.",
+    intent: "ready_to_buy",
+    suggestedResponse: "Hi Priya, we have ready-to-move-in 3BHK luxury apartments available for you this Saturday. Let us complete registration before Diwali.",
+    missingInformation: [],
+    uncertainties: [],
+    evidence: [
+      {
+        field: "customerMessage",
+        quote: "Ready to visit this Saturday with my family", // Genuine verbatim quote
+      },
+      {
+        field: "customerMessage",
+        quote: "Need registration before Diwali", // Hallucinated quote
+      },
+    ],
+  };
+
+  const validated = validateAnalysisResponse(hallucinatedModelOutput, priyaLead);
+
+  // Ungrounded Diwali claim in summary is sanitized
+  assert.equal(/diwali/i.test(validated.summary), false);
+  // Ungrounded Diwali claim in suggestedResponse is sanitized
+  assert.equal(/diwali/i.test(validated.suggestedResponse), false);
+  // Unverified affirmative ready-to-move inventory claim is sanitized into conditional verification
+  assert.equal(/we have ready-to-move-in/i.test(validated.suggestedResponse), false);
+  assert.ok(validated.suggestedResponse.toLowerCase().includes("check current availability"));
+
+  // Questions to verify: unverified inventory availability is automatically added to missingInformation
+  assert.ok(validated.missingInformation.some((m) => /inventory|availability|handover/i.test(m)));
+  assert.ok(validated.uncertainties.some((u) => /inventory|verification/i.test(u)));
+
+  // Tests must distinguish customer message quoting a phrase from model endorsing an ungrounded claim:
+  // Genuine quote from customer text is marked verified: true
+  assert.equal(validated.evidence[0].verified, true);
+  // Fabricated quote NOT in customer text is marked verified: false
+  assert.equal(validated.evidence[1].verified, false);
+});
+
+test("Factual grounding: Legitimate customer-stated phrases are preserved and verified", () => {
+  // If the customer ACTUALLY stated Diwali in their message:
+  const customerMentioningDiwali = {
+    name: "Vikram Mehta",
+    location: "Sarjapur Road",
+    propertyRequirement: "3 BHK",
+    budget: 15000000,
+    buyingTimeline: "immediate",
+    customerMessage: "Want to do housewarming by Diwali. Can we visit this Sunday?",
+  };
+
+  const modelOutput = {
+    summary: "Vikram wants to do housewarming by Diwali and requested a visit this Sunday.",
+    intent: "ready_to_buy",
+    suggestedResponse: "Hi Vikram, I would be glad to check availability for options matching your Diwali housewarming target and coordinate a visit this Sunday.",
+    missingInformation: ["Floor height unconfirmed"],
+    uncertainties: [],
+    evidence: [
+      {
+        field: "customerMessage",
+        quote: "housewarming by Diwali",
+      },
+    ],
+  };
+
+  const validated = validateAnalysisResponse(modelOutput, customerMentioningDiwali);
+
+  // Because Diwali WAS in customer text, it is NOT sanitized away:
+  assert.ok(validated.summary.includes("Diwali"));
+  assert.ok(validated.suggestedResponse.includes("Diwali"));
+  // And the evidence quote is verified: true
+  assert.equal(validated.evidence[0].verified, true);
+});

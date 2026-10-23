@@ -1,5 +1,5 @@
 // ============================================================================
-// SignalDesk — AI Response Types & Metadata Contract
+// LeadMotive — AI Response Types & Metadata Contract
 // ============================================================================
 
 import type {
@@ -9,6 +9,7 @@ import type {
   SuggestedAction,
   TimelineTouchpoint,
   RehearsalFeedback,
+  RehearsalScenarioType,
   LeadMomentumPlan,
   PlanningObjective,
   CommunicationFormat,
@@ -19,14 +20,18 @@ import type {
 // Typed Provider Metadata
 // ---------------------------------------------------------------------------
 export interface AIMetadata {
-  /** The actual provider used (e.g. "google-gemini", "offline-heuristic", or "seeded-fixture"). */
-  provider: "google-gemini" | "offline-heuristic" | "seeded-fixture";
+  /** The actual provider used (e.g. "google-gemini", "groq", "offline-heuristic", or "seeded-fixture"). */
+  provider: "google-gemini" | "groq" | "offline-heuristic" | "seeded-fixture";
   /** The actual model used if live, or null if heuristic. */
   model: string | null;
   /** Whether this was a verified live provider response or an offline fallback. */
   mode: "live" | "fallback" | "fixture";
   /** Explicit flag confirming if fallback was triggered. */
   fallbackUsed: boolean;
+  /** Explicit flag confirming if secondary provider (Groq) was used. */
+  secondaryUsed?: boolean;
+  /** Sanitized reason why primary failed if secondary/fallback used. */
+  primaryFailureReason?: string;
   /** Server-measured execution latency in milliseconds. */
   latencyMs: number;
   /** Optional informational or sanitised message. */
@@ -173,13 +178,19 @@ export interface ChatResponse {
 
 export type RehearsalMode = "roleplay" | "coach";
 
+export type { RehearsalScenarioType };
+
 /** POST /api/leads/rehearsal — request body. */
 export interface RehearsalRequest {
   /** Mode: "roleplay" (buyer simulation) or "coach" (debrief feedback). Defaults to "roleplay". */
   mode?: RehearsalMode;
+  /** Scenario type: "immediate_buyer" (high-intent buyer) or "documented_concern" (objection handling). */
+  scenarioType?: RehearsalScenarioType;
+  /** Whether the scenario is hypothetical (when lead does not have confirmed immediate intent). */
+  isHypothetical?: boolean;
   /** The salesperson's latest response in the roleplay, or empty if starting scenario. */
   message?: string;
-  /** The target objection being rehearsed. */
+  /** The target objection being rehearsed (for documented_concern mode). */
   targetObjection?: {
     label: string;
     severity?: string;
@@ -201,6 +212,7 @@ export interface RehearsalRequest {
     analysis?: {
       summary?: string;
       intent?: string;
+      recommendedAction?: { description: string; timeframe: string };
     } | null;
   };
   /** Previous rehearsal messages. */
@@ -213,6 +225,10 @@ export interface RehearsalRequest {
 export interface RehearsalResponse {
   /** Mode of response. */
   mode?: RehearsalMode;
+  /** Scenario type rehearsed. */
+  scenarioType?: RehearsalScenarioType;
+  /** Whether the scenario was hypothetical. */
+  isHypothetical?: boolean;
   /** The AI customer's reply. */
   customerReply: string;
   /** Coaching feedback, if in coach mode or requested. */
@@ -225,9 +241,23 @@ export interface DiagnosticsResponse {
   configured: boolean;
   model: string;
   tested: boolean;
-  status: "ready" | "unconfigured" | "error";
+  status:
+    | "ready"
+    | "unconfigured"
+    | "error"
+    | "rate_limited"
+    | "unavailable"
+    | "secondary_active"
+    | "heuristic_fallback";
+  statusLabel?: string;
+  activeProvider?: "google-gemini" | "groq" | "offline-heuristic";
+  primaryConfigured?: boolean;
+  secondaryConfigured?: boolean;
+  primaryModel?: string;
+  secondaryModel?: string;
   latencyMs?: number;
   message: string;
+  lastTestedAt?: string;
 }
 
 /** Shared API error shape. */

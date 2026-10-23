@@ -1,5 +1,5 @@
 // ============================================================================
-// SignalDesk — Synthetic Lead Fixtures
+// LeadMotive — Synthetic Lead Fixtures
 // ============================================================================
 //
 // Six diverse, internally consistent Bengaluru leads.

@@ -1,5 +1,5 @@
 {
-  "name": "signaldesk",
+  "name": "leadmotive",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --test tests/scoring.test.mjs tests/plan.test.mjs tests/analysis.test.mjs tests/chat.test.mjs tests/rehearsal.test.mjs tests/security_and_resilience.test.mjs"
+    "test": "node --test tests/scoring.test.mjs tests/plan.test.mjs tests/analysis.test.mjs tests/chat.test.mjs tests/rehearsal.test.mjs tests/security_and_resilience.test.mjs tests/ai_provider_reliability.test.mjs tests/api_live_endpoints.test.mjs tests/real_estate_cases.test.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.30.0",

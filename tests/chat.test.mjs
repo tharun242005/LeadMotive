@@ -141,15 +141,15 @@ test("Financing query: grounds in selected lead's specific financing context", (
   assert.ok(!arjunFinancing.answer.includes("1.2")); // Does NOT leak Priya's budget
 });
 
-test("Priority query: explains Hot vs Warm using 4-factor scoring model", () => {
-  const priyaPriority = generateFallbackChat("Why is this lead Hot rather than Warm?", priyaLead);
-  assert.ok(priyaPriority.answer.includes("HOT"));
+test("Priority query: explains Act Now vs Follow Up using 4-factor scoring model", () => {
+  const priyaPriority = generateFallbackChat("Why is this lead Act Now rather than Follow Up?", priyaLead);
+  assert.ok(priyaPriority.answer.includes("ACT NOW"));
   assert.ok(priyaPriority.answer.includes("85/100"));
   assert.ok(priyaPriority.answer.includes("Timeline (30 pts max)"));
   assert.ok(priyaPriority.answer.includes("Intent (30 pts max)"));
 
-  const arjunPriority = generateFallbackChat("Why is this lead Hot rather than Warm?", arjunLead);
-  assert.ok(arjunPriority.answer.includes("WARM"));
+  const arjunPriority = generateFallbackChat("Why is this lead Act Now rather than Follow Up?", arjunLead);
+  assert.ok(arjunPriority.answer.includes("FOLLOW UP"));
   assert.ok(arjunPriority.answer.includes("68/100"));
 });
 
