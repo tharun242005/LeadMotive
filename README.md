@@ -50,35 +50,66 @@ LeadMotive is an enterprise-grade sales intelligence workbench designed for high
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                      NEXT.JS 16 SERVER-SIDE RUNTIME                         │
 │                                                                             │
-│  ┌─────────────────┐ ┌───────────────┐ ┌────────────────┐ ┌─────────────-─┐ │
+│  ┌─────────────────┐ ┌───────────────┐ ┌────────────────┐ ┌──────────────┐ │
 │  │POST/leads/analyze│ │POST/leads/plan│ │POST/leads/chat │ │POST/rehearsal│ │
-│  └────────┬────────┘ └───────┬───────┘ └───────┬────────┘ └──────┬───────-┘ │
-│           │                  │                 │                 │          │
-│           ▼                  ▼                 ▼                 ▼          │
+│  └────────┬────────┘ └───────┬───────┘ └───────┬────────┘ └──────┬───────┘ │
+│           │                  │                 │                 │         │
+│           ▼                  ▼                 ▼                 ▼         │
 │  ┌───────────────────────────────────────────────────────────────────────┐  │
-│  │                           AI Client Engine                            │  │
-│  │   - Server Environment Secret Isolation (GEMINI_API_KEY)              │  │
+│  │                      Multi-Provider AI Cascade Engine                 │  │
+│  │   - Server Environment Secret Isolation (GEMINI_API_KEY, GROQ_API_KEY)│  │
 │  │   - Typed Runtime Schema Enforcer & Verbatim Quotation Verifier       │  │
-│  │   - Resilient Offline Bengaluru Heuristic Fallback Engine             │  │
-│  └───────────────────────────────────┬───────────────────────────────────┘  │
-└──────────────────────────────────────┼──────────────────────────────────────┘
-                                       │ HTTPS REST
-                                       ▼
+│  │   - Request Deduplication & Health State Management                   │  │
+│  │   - Vercel Serverless Function Budget: maxDuration = 45s              │  │
+│  └───────────────────────┬───────────────────────────────────────────────┘  │
+└──────────────────────────┼──────────────────────────────────────────────────┘
+                           │
+             ┌─────────────┴─────────────┐
+             │                           │
+   [1. Primary Provider]       [2. Secondary Failover]
+             │                           │
+             ▼                           ▼
+┌─────────────────────────┐ ┌─────────────────────────┐
+│   Google Gemini API     │ │        Groq API         │
+│ (gemini-3.5-flash-lite) │ │  (openai/gpt-oss-20b)   │
+│   Timeout: 20,000ms     │ │   Timeout: 12,000ms     │
+└────────────┬────────────┘ └────────────┬────────────┘
+             │                           │
+             └─────────────┬─────────────┘
+                           │ (429 Quota Exhaustion / Timeout / Network / Service Error)
+                           ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                 GOOGLE GEMINI API (gemini-3.8-flash)                        │
+│           3. Deterministic Bengaluru Offline Heuristic Engine               │
+│    (Dynamic 3–10 Steps, Verifiable Quotations, Honest Fallback Telemetry)    │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## AI Model & Integration Details
+## AI Model & Multi-Provider Cascade Details
 
 - **Official SDK**: `@google/genai` (v2.30.0).
-- **Default Model**: `gemini-3.8-flash` (Google's latest Flash-class model offering sub-500ms latency and native structured JSON output).
-- **Server-Only Invocation**: All AI requests originate strictly from Next.js server route handlers (`src/app/api/leads/*`). No client-side API keys exist, and no secrets are exposed to the browser.
+- **Primary Model**: `gemini-3.5-flash-lite` (Google's multimodal Flash-Lite class model for high-throughput structured output). Configurable via server environment variable `GEMINI_MODEL`.
+- **Secondary Failover Provider**: Groq Cloud REST API via `openai/gpt-oss-20b` (`GROQ_API_KEY`, `GROQ_MODEL`). Automatically activated if Gemini returns HTTP 429 (quota exhaustion/rate limits), times out, or encounters transient service errors.
+- **Final Heuristic Fallback**: Deterministic Bengaluru Heuristic Engine, guaranteeing zero unhandled 500 errors and providing full-fidelity structured outputs even in complete offline mode.
+- **Provider Cascade Order**: `Google Gemini` (Primary) → `Groq` (Secondary) → `Deterministic Heuristics` (Final Fallback). Never silently labels heuristic data as live AI.
+- **Server-Only Invocation**: All AI requests originate strictly from Next.js server route handlers (`src/app/api/leads/*`). Zero client-side API keys exist, and no secrets are exposed to the browser.
 - **Untrusted Input Shielding**: Raw customer inquiry text is isolated inside triple quotes (`"""`) with strict anti-override system instructions preventing prompt injections.
 - **Verbatim Quotation Grounding**: Extracted objection evidence is compared against the original customer submission. If not an exact verbatim match, it is flagged with `[Unverified Quote]` to eliminate hallucinated evidence.
-- **Dual-Mode Telemetry**: Every response includes an `AIMetadata` header (`mode: "live"` vs `mode: "fallback"`). If the API key is not configured or rates are exceeded, the server transitions to an offline Bengaluru heuristic engine without throwing unhandled exceptions.
+- **Honest Multi-Provider Telemetry**: Every response includes an `AIMetadata` header exposing:
+  - `provider`: `"google-gemini"` | `"groq"` | `"offline-heuristic"`
+  - `model`: The model that actually generated the response (e.g. `"gemini-3.5-flash-lite"`, `"openai/gpt-oss-20b"`, or `null`)
+  - `mode`: `"live"` | `"fallback"`
+  - `fallbackUsed`: `boolean` (strictly `false` when a live model succeeds)
+  - `secondaryUsed`: `boolean` (`true` when failed over to Groq)
+  - `primaryFailureReason`: Detailed failure code (`"gemini_timeout"`, `"gemini_quota_exceeded"`, `"gemini_invalid_key"`, etc.)
+  - `fallbackReason`: Root failure code triggering the fallback
+  - `latencyMs`: Precise round-trip execution duration
+- **Measured Latency & Execution Budget**:
+  - **Deterministic 4-Factor Scoring**: **< 1ms / instant** (client-side pure math).
+  - **Live AI Structured Generation**: Measured at **8–14 seconds** on `gemini-3.5-flash-lite` for full 2,000-token structured roadmaps with multi-branch logic, protected by a 20,000ms timeout.
+  - **Conversational AI Coach & Rehearsal**: Measured at **2–4 seconds** for interactive roleplay turns.
+  - **Vercel Execution Headroom**: API route handlers export `export const maxDuration = 45;` (and `maxDuration = 20;` for diagnostics), ensuring that the primary Gemini call (20s) plus optional Groq failover (12s) execute comfortably within hosting platform limits without 504 gateway timeouts.
 
 ---
 
@@ -149,17 +180,21 @@ src/
 │   └── utils/                      # Formatting helpers (INR currency, dates, timelines)
 └── types/                          # TypeScript contracts (lead.ts, ai.ts)
 tests/
-├── scoring.test.mjs                # 4-factor scoring contracts & band boundary tests (6 tests)
-├── plan.test.mjs                   # Momentum Plan schema, variable length & adaptation tests (5 tests)
-├── analysis.test.mjs               # AI analysis schema, quote verification & error tests (4 tests)
-├── chat.test.mjs                   # Contextual coach grounding & injection protection tests (9 tests)
-├── rehearsal.test.mjs              # Objection rehearsal roleplay & 4-dimension coaching tests (12 tests)
-└── security_and_resilience.test.mjs# Fallback analysis, context isolation & safety tests (7 tests)
+├── scoring.test.mjs                # 4-factor scoring mathematical formula, band boundaries & Day/Night tokens (21 tests)
+├── plan.test.mjs                   # Dynamic step bounds (3–10), schema integrity, status lifecycle & adaptation (5 tests)
+├── analysis.test.mjs               # AI analysis schema, verbatim quotation verification & boundary clamping (6 tests)
+├── chat.test.mjs                   # Contextual coach grounding, cross-lead context isolation & prompt injection defense (9 tests)
+├── rehearsal.test.mjs              # Objection rehearsal roleplay simulation, 4-dimension debrief rubric & boundaries (20 tests)
+├── security_and_resilience.test.mjs# Offline fallback analysis, prompt injection shielding & context isolation (7 tests)
+├── ai_provider_reliability.test.mjs# Provider cascade, 429 quota failover to Groq, timeout & invalid key handling (15 tests)
+├── plan_provider_resilience.test.mjs# Timeout headroom (20s/12s/10s), error categorization, schema validation & telemetry (9 tests)
+├── api_live_endpoints.test.mjs     # End-to-end integration tests for diagnostics, analyze, chat, and rehearsal routes (9 tests)
+└── real_estate_cases.test.mjs      # Real-world Bengaluru micro-market test cases (A through H) & boundary tests (8 tests)
 docs/
 ├── ARCHITECTURE.md                 # System architecture & component data flows
 ├── LEAD_SCORING.md                 # 4-factor deterministic scoring mathematical specification
 ├── AI_DECISIONS.md                 # AI engineering, prompt design & model selection rationale
-├── TEST_PLAN.md                    # Comprehensive test verification plan (43 automated tests)
+├── TEST_PLAN.md                    # Comprehensive test verification plan (109 automated tests)
 ├── DEMO_SCRIPT.md                  # 5-minute technical interviewer walkthrough script
 ├── AI_USAGE_DISCLOSURE.md          # Tooling attribution & development governance
 ├── RELEASE_AUDIT.md                # Master release audit & 10-criteria coverage report
@@ -211,7 +246,7 @@ Open [http://localhost:3000](http://localhost:3000) for the homepage, or [http:/
 ```bash
 npm test
 ```
-Executes all test suites with 0 failures.
+Executes all test suites with 0 failures (109 automated tests passing across 10 test suites).
 
 ### 6. Code Quality Checks
 ```bash
@@ -234,5 +269,15 @@ npm run build
 3. **Synthetic Bengaluru Data**: All records, names, pricing, and phone numbers are 100% synthetic fixtures for Bengaluru property corridors. Real customer PII must never be entered under free-tier API terms.
 
 
-**Built by [THARUN P](https://www.linkedin.com/in/tharun-p-4146b4318/) for [LeadMotive](https://github.com/tharun242005)**
+## Acknowledgements
 
+Built by **Tharun P** for the LeadMotive project.
+
+- Email: [run40081@gmail.com](mailto:run40081@gmail.com)
+- GitHub: [tharun242005](https://github.com/tharun242005)
+- Project repository: [LeadMotive](https://github.com/tharun242005/LeadMotive)
+- Live application: [iqol-six.vercel.app](https://iqol-six.vercel.app)
+
+---
+
+*LeadMotive is a demonstration and decision-support project. It is not a source of verified property inventory, legal advice, lending approval, or guaranteed investment or sales outcomes.*
