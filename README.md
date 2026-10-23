@@ -5,6 +5,13 @@
 LeadMotive is an enterprise-grade sales intelligence workbench designed for high-velocity real estate markets. It solves the critical triage bottleneck in high-ticket property sales: helping sales representatives decide who to call within the golden 15-minute window, uncovering hidden buyer anxieties (pricing per sqft, RERA delivery delays, A-Khata legal validity), and enabling reps to rehearse objections before dialing.
 
 ---
+<p align="left">
+  <a href="https://iqol-six.vercel.app/"><strong>Live application</strong></a> ·
+  <a href="https://iqol-six.vercel.app/workspace"><strong>Open workspace</strong></a> ·
+  <a href="https://github.com/tharun242005/LeadMotive"><strong>Source repository</strong></a>
+</p>
+
+> **Demo-data and privacy notice:** The included lead examples are synthetic. The current application stores leads and plan progress in browser `localStorage`; it does not provide a shared, server-side customer database. Do not enter real customer personal, financial, or otherwise sensitive information into a demo deployment. Model-generated property details, availability, prices, legal information, financial estimates, and possession dates must be independently verified before being communicated to a customer.
 
 ## What LeadMotive Solves
 
