@@ -36,47 +36,43 @@ LeadMotive is an enterprise-grade sales intelligence workbench designed for high
 ## Architecture Overview
 
 ```mermaid
-flowchart TB
-
+flowchart TD
     subgraph CLIENT["CLIENT BROWSER"]
         direction TB
+        A["Navigation Rail"]
+        B["Lead Queue"]
+        C["Lead Detail"]
+        D["Workspace State<br/>React Hooks + Versioned localStorage"]
 
-        NAV["Navigation Rail<br/>Workspace · Intake · AI Diagnostics"]
-        QUEUE["Lead Queue<br/>Search · Priority Filters<br/>Metric Badges · Skeletons"]
-        DETAIL["Lead Detail<br/>Intent · Score Math · Objections<br/>Timeline · Smart Responses"]
-
-        STATE["Workspace State Orchestrator<br/>React 19 Hooks + Versioned localStorage Persistence"]
-
-        NAV --> STATE
-        QUEUE --> STATE
-        DETAIL --> STATE
+        A --> D
+        B --> D
+        C --> D
     end
 
     subgraph SERVER[" "]
         direction TB
 
-        SERVER_TITLE["NEXT.JS 16 SERVER RUNTIME"]
+        SERVER_TITLE["NEXT.JS SERVER RUNTIME"]
+        E["Secure JSON Payload<br/>No Client-Side API Keys"]
 
-        PAYLOAD["Secure JSON Payload<br/>No Client-Side API Keys"]
+        F["Lead Analysis API"]
+        G["Lead Momentum Plan API"]
+        H["AI Sales Coach API"]
+        I["Objection Rehearsal API"]
 
-        API_ANALYZE["POST /leads/analyze"]
-        API_PLAN["POST /leads/plan"]
-        API_CHAT["POST /leads/chat"]
-        API_REHEARSAL["POST /rehearsal"]
+        J["Multi-Provider AI Cascade"]
 
-        ENGINE["Multi-Provider AI Cascade Engine<br/>Server-Side Secret Isolation<br/>Typed Schema Validation · Verbatim Quotation Verification<br/>Request Deduplication · Health-State Management<br/>Vercel maxDuration: 45s"]
+        SERVER_TITLE ~~~ E
 
-        SERVER_TITLE ~~~ PAYLOAD
+        E --> F
+        E --> G
+        E --> H
+        E --> I
 
-        PAYLOAD --> API_ANALYZE
-        PAYLOAD --> API_PLAN
-        PAYLOAD --> API_CHAT
-        PAYLOAD --> API_REHEARSAL
-
-        API_ANALYZE --> ENGINE
-        API_PLAN --> ENGINE
-        API_CHAT --> ENGINE
-        API_REHEARSAL --> ENGINE
+        F --> J
+        G --> J
+        H --> J
+        I --> J
     end
 
     subgraph PROVIDERS[" "]
@@ -84,34 +80,21 @@ flowchart TB
 
         PROVIDERS_TITLE["AI PROVIDERS"]
 
-        GEMINI["1. PRIMARY PROVIDER<br/>Google Gemini API<br/>gemini-3.5-flash-lite<br/>Timeout: 20 seconds"]
+        K["Google Gemini API<br/>Primary Provider"]
+        L["Groq API<br/>Secondary Provider"]
+        M["Offline Heuristic Engine"]
 
-        GROQ["2. SECONDARY FAILOVER<br/>Groq API<br/>openai/gpt-oss-20b<br/>Timeout: 12 seconds"]
+        PROVIDERS_TITLE ~~~ K
 
-        FALLBACK["3. DETERMINISTIC BENGALURU OFFLINE HEURISTIC ENGINE<br/>Dynamic 3–10-Step Follow-Up Plans<br/>Verifiable Customer Quotations<br/>Explicit Fallback Status and Telemetry"]
-
-        PROVIDERS_TITLE ~~~ GEMINI
-
-        GEMINI -->|"Quota Exhaustion (429) / Timeout / Network / Service Error"| GROQ
-        GROQ -->|"Provider Unavailable"| FALLBACK
+        K -->|"Quota / Timeout / Service Error"| L
+        L -->|"Provider Unavailable"| M
     end
 
-    STATUS["Explicit Fallback Status<br/>Honest Result Attribution"]
+    D --> E
+    J --> K
+    M --> N["Explicit Fallback Status<br/>Honest Result Attribution"]
 
-    STATE --> PAYLOAD
-    ENGINE --> GEMINI
-    FALLBACK --> STATUS
-
-    classDef client fill:#e8f2ff,stroke:#3973ac,color:#142b45
-    classDef server fill:#e9f8ef,stroke:#288653,color:#143d27
-    classDef provider fill:#fff3dc,stroke:#c58b24,color:#50370b
-    classDef fallback fill:#f3eaff,stroke:#8a5bc2,color:#321d4a
     classDef sectionTitle fill:transparent,stroke:transparent,color:#333333,font-weight:bold
-
-    class NAV,QUEUE,DETAIL,STATE client
-    class PAYLOAD,API_ANALYZE,API_PLAN,API_CHAT,API_REHEARSAL,ENGINE server
-    class GEMINI,GROQ provider
-    class FALLBACK,STATUS fallback
     class SERVER_TITLE,PROVIDERS_TITLE sectionTitle
 
     style SERVER fill:#fffef0,stroke:#b5a5d5,stroke-width:1px
