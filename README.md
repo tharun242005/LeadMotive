@@ -37,38 +37,58 @@ LeadMotive is an enterprise-grade sales intelligence workbench designed for high
 
 ```mermaid
 flowchart TD
-    subgraph CLIENT["CLIENT BROWSER"]
-        A["Navigation Rail"]
-        B["Lead Queue"]
-        C["Lead Detail"]
-        D["Workspace State<br/>React Hooks + Versioned localStorage"]
+    NAV["Navigation Rail<br/>Workspace · Intake · AI Diagnostics"]
+    QUEUE["Lead Queue<br/>Search · Priority Filters · Metric Badges"]
+    DETAIL["Lead Detail<br/>Intent · Score · Objections · Timeline"]
 
-        A --> D
-        B --> D
-        C --> D
-    end
+    STATE["Workspace State Orchestrator<br/>React Hooks + Versioned localStorage"]
+    PAYLOAD["Secure JSON Payload<br/>No Client-Side API Keys"]
 
-    D --> E["Secure JSON Payload<br/>No Client-Side API Keys"]
+    RUNTIME["Next.js 16 Server Runtime"]
 
-    subgraph SERVER["NEXT.JS SERVER RUNTIME"]
-        E --> F["Lead Analysis API"]
-        E --> G["Lead Momentum Plan API"]
-        E --> H["AI Sales Coach API"]
-        E --> I["Objection Rehearsal API"]
+    ANALYZE["POST /leads/analyze"]
+    PLAN["POST /leads/plan"]
+    CHAT["POST /leads/chat"]
+    REHEARSAL["POST /rehearsal"]
 
-        F --> J["Multi-Provider AI Cascade"]
-        G --> J
-        H --> J
-        I --> J
-    end
+    CASCADE["Multi-Provider AI Cascade<br/>Server-Side Secrets · Schema Validation<br/>Request Deduplication · Health Management"]
 
-    subgraph PROVIDERS["AI PROVIDERS"]
-        J --> K["Google Gemini API<br/>Primary Provider"]
-        K -->|"Quota / Timeout / Service Error"| L["Groq API<br/>Secondary Provider"]
-        L -->|"Provider Unavailable"| M["Offline Heuristic Engine"]
-    end
+    GEMINI["Google Gemini API<br/>Primary Provider"]
+    GROQ["Groq API<br/>Secondary Provider"]
+    FALLBACK["Deterministic Offline Heuristic Engine<br/>Bengaluru-Specific Follow-Up Plans"]
+    STATUS["Explicit Fallback Status<br/>Honest Result Attribution"]
 
-    M --> N["Explicit Fallback Status<br/>Honest Result Attribution"]
+    NAV --> STATE
+    QUEUE --> STATE
+    DETAIL --> STATE
+
+    STATE --> PAYLOAD
+    PAYLOAD --> RUNTIME
+
+    RUNTIME --> ANALYZE
+    RUNTIME --> PLAN
+    RUNTIME --> CHAT
+    RUNTIME --> REHEARSAL
+
+    ANALYZE --> CASCADE
+    PLAN --> CASCADE
+    CHAT --> CASCADE
+    REHEARSAL --> CASCADE
+
+    CASCADE --> GEMINI
+    GEMINI -->|"Quota / Timeout / Service Error"| GROQ
+    GROQ -->|"Provider Unavailable"| FALLBACK
+    FALLBACK --> STATUS
+
+    classDef client fill:#e8f2ff,stroke:#3973ac,color:#142b45
+    classDef server fill:#e9f8ef,stroke:#288653,color:#143d27
+    classDef provider fill:#fff3dc,stroke:#c58b24,color:#50370b
+    classDef fallback fill:#f3eaff,stroke:#8a5bc2,color:#321d4a
+
+    class NAV,QUEUE,DETAIL,STATE client
+    class PAYLOAD,RUNTIME,ANALYZE,PLAN,CHAT,REHEARSAL,CASCADE server
+    class GEMINI,GROQ provider
+    class FALLBACK,STATUS fallback
 ```
 ---
 
