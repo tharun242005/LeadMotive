@@ -35,62 +35,41 @@ LeadMotive is an enterprise-grade sales intelligence workbench designed for high
 
 ## Architecture Overview
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              CLIENT BROWSER                                 │
-│                                                                             │
-│  ┌───────────────┐  ┌──────────────────────┐  ┌──────────────────────────┐  │
-│  │    NavRail    │  │      LeadQueue       │  │        LeadDetail        │  │
-│  │ (Workspace,   │  │  (Search, Priority   │  │ (Intent, Score Math,     │  │
-│  │  Intake, AI   │  │   Filters, Metric    │  │  Objections, Timeline,   │  │
-│  │  Diagnostics) │  │   Badges, Skeletons) │  │  Smart Responses)        │  │
-│  └───────┬───────┘  └──────────┬───────────┘  └────────────┬─────────────┘  │
-│          │                     │                           │                │
-│          ▼                     ▼                           ▼                │
-│  ┌───────────────────────────────────────────────────────────────────────┐  │
-│  │                       Workspace State Orchestrator                    │  │
-│  │       (React 19 Hooks + LocalStorage Versioned Persistence Layer)     │  │
-│  └───────────────────────────────────┬───────────────────────────────────┘  │
-└──────────────────────────────────────┼──────────────────────────────────────┘
-                                       │ Secure JSON Payload (No Client API Keys)
-                                       ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                      NEXT.JS 16 SERVER-SIDE RUNTIME                         │
-│                                                                             │
-│  ┌─────────────────┐ ┌───────────────┐ ┌────────────────┐ ┌──────────────┐ │
-│  │POST/leads/analyze│ │POST/leads/plan│ │POST/leads/chat │ │POST/rehearsal│ │
-│  └────────┬────────┘ └───────┬───────┘ └───────┬────────┘ └──────┬───────┘ │
-│           │                  │                 │                 │         │
-│           ▼                  ▼                 ▼                 ▼         │
-│  ┌───────────────────────────────────────────────────────────────────────┐  │
-│  │                      Multi-Provider AI Cascade Engine                 │  │
-│  │   - Server Environment Secret Isolation (GEMINI_API_KEY, GROQ_API_KEY)│  │
-│  │   - Typed Runtime Schema Enforcer & Verbatim Quotation Verifier       │  │
-│  │   - Request Deduplication & Health State Management                   │  │
-│  │   - Vercel Serverless Function Budget: maxDuration = 45s              │  │
-│  └───────────────────────┬───────────────────────────────────────────────┘  │
-└──────────────────────────┼──────────────────────────────────────────────────┘
-                           │
-             ┌─────────────┴─────────────┐
-             │                           │
-   [1. Primary Provider]       [2. Secondary Failover]
-             │                           │
-             ▼                           ▼
-┌─────────────────────────┐ ┌─────────────────────────┐
-│   Google Gemini API     │ │        Groq API         │
-│ (gemini-3.5-flash-lite) │ │  (openai/gpt-oss-20b)   │
-│   Timeout: 20,000ms     │ │   Timeout: 12,000ms     │
-└────────────┬────────────┘ └────────────┬────────────┘
-             │                           │
-             └─────────────┬─────────────┘
-                           │ (429 Quota Exhaustion / Timeout / Network / Service Error)
-                           ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│           3. Deterministic Bengaluru Offline Heuristic Engine               │
-│    (Dynamic 3–10 Steps, Verifiable Quotations, Honest Fallback Telemetry)    │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
+```mermaid
+flowchart TD
+    subgraph CLIENT["CLIENT BROWSER"]
+        A["Navigation Rail"]
+        B["Lead Queue"]
+        C["Lead Detail"]
+        D["Workspace State<br/>React Hooks + Versioned localStorage"]
 
+        A --> D
+        B --> D
+        C --> D
+    end
+
+    D --> E["Secure JSON Payload<br/>No Client-Side API Keys"]
+
+    subgraph SERVER["NEXT.JS SERVER RUNTIME"]
+        E --> F["Lead Analysis API"]
+        E --> G["Lead Momentum Plan API"]
+        E --> H["AI Sales Coach API"]
+        E --> I["Objection Rehearsal API"]
+
+        F --> J["Multi-Provider AI Cascade"]
+        G --> J
+        H --> J
+        I --> J
+    end
+
+    subgraph PROVIDERS["AI PROVIDERS"]
+        J --> K["Google Gemini API<br/>Primary Provider"]
+        K -->|"Quota / Timeout / Service Error"| L["Groq API<br/>Secondary Provider"]
+        L -->|"Provider Unavailable"| M["Offline Heuristic Engine"]
+    end
+
+    M --> N["Explicit Fallback Status<br/>Honest Result Attribution"]
+```
 ---
 
 ## AI Model & Multi-Provider Cascade Details
