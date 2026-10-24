@@ -36,39 +36,86 @@ LeadMotive is an enterprise-grade sales intelligence workbench designed for high
 ## Architecture Overview
 
 ```mermaid
-flowchart TD
+flowchart TB
+
     subgraph CLIENT["CLIENT BROWSER"]
-        A["Navigation Rail"]
-        B["Lead Queue"]
-        C["Lead Detail"]
-        D["Workspace State<br/>React Hooks + Versioned localStorage"]
+        direction TB
 
-        A --> D
-        B --> D
-        C --> D
+        NAV["Navigation Rail<br/>Workspace · Intake · AI Diagnostics"]
+        QUEUE["Lead Queue<br/>Search · Priority Filters<br/>Metric Badges · Skeletons"]
+        DETAIL["Lead Detail<br/>Intent · Score Math · Objections<br/>Timeline · Smart Responses"]
+
+        STATE["Workspace State Orchestrator<br/>React 19 Hooks + Versioned localStorage Persistence"]
+
+        NAV --> STATE
+        QUEUE --> STATE
+        DETAIL --> STATE
     end
 
-    D --> E["Secure JSON Payload<br/>No Client-Side API Keys"]
+    subgraph SERVER[" "]
+        direction TB
 
-    subgraph SERVER["NEXT.JS SERVER RUNTIME&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]
-        E --> F["Lead Analysis API"]
-        E --> G["Lead Momentum Plan API"]
-        E --> H["AI Sales Coach API"]
-        E --> I["Objection Rehearsal API"]
+        SERVER_TITLE["NEXT.JS 16 SERVER RUNTIME"]
 
-        F --> J["Multi-Provider AI Cascade"]
-        G --> J
-        H --> J
-        I --> J
+        PAYLOAD["Secure JSON Payload<br/>No Client-Side API Keys"]
+
+        API_ANALYZE["POST /leads/analyze"]
+        API_PLAN["POST /leads/plan"]
+        API_CHAT["POST /leads/chat"]
+        API_REHEARSAL["POST /rehearsal"]
+
+        ENGINE["Multi-Provider AI Cascade Engine<br/>Server-Side Secret Isolation<br/>Typed Schema Validation · Verbatim Quotation Verification<br/>Request Deduplication · Health-State Management<br/>Vercel maxDuration: 45s"]
+
+        SERVER_TITLE ~~~ PAYLOAD
+
+        PAYLOAD --> API_ANALYZE
+        PAYLOAD --> API_PLAN
+        PAYLOAD --> API_CHAT
+        PAYLOAD --> API_REHEARSAL
+
+        API_ANALYZE --> ENGINE
+        API_PLAN --> ENGINE
+        API_CHAT --> ENGINE
+        API_REHEARSAL --> ENGINE
     end
 
-    subgraph PROVIDERS["AI PROVIDERS"]
-        J --> K["Google Gemini API<br/>Primary Provider"]
-        K -->|"Quota / Timeout / Service Error"| L["Groq API<br/>Secondary Provider"]
-        L -->|"Provider Unavailable"| M["Offline Heuristic Engine"]
+    subgraph PROVIDERS[" "]
+        direction TB
+
+        PROVIDERS_TITLE["AI PROVIDERS"]
+
+        GEMINI["1. PRIMARY PROVIDER<br/>Google Gemini API<br/>gemini-3.5-flash-lite<br/>Timeout: 20 seconds"]
+
+        GROQ["2. SECONDARY FAILOVER<br/>Groq API<br/>openai/gpt-oss-20b<br/>Timeout: 12 seconds"]
+
+        FALLBACK["3. DETERMINISTIC BENGALURU OFFLINE HEURISTIC ENGINE<br/>Dynamic 3–10-Step Follow-Up Plans<br/>Verifiable Customer Quotations<br/>Explicit Fallback Status and Telemetry"]
+
+        PROVIDERS_TITLE ~~~ GEMINI
+
+        GEMINI -->|"Quota Exhaustion (429) / Timeout / Network / Service Error"| GROQ
+        GROQ -->|"Provider Unavailable"| FALLBACK
     end
 
-    M --> N["Explicit Fallback Status<br/>Honest Result Attribution"]
+    STATUS["Explicit Fallback Status<br/>Honest Result Attribution"]
+
+    STATE --> PAYLOAD
+    ENGINE --> GEMINI
+    FALLBACK --> STATUS
+
+    classDef client fill:#e8f2ff,stroke:#3973ac,color:#142b45
+    classDef server fill:#e9f8ef,stroke:#288653,color:#143d27
+    classDef provider fill:#fff3dc,stroke:#c58b24,color:#50370b
+    classDef fallback fill:#f3eaff,stroke:#8a5bc2,color:#321d4a
+    classDef sectionTitle fill:transparent,stroke:transparent,color:#333333,font-weight:bold
+
+    class NAV,QUEUE,DETAIL,STATE client
+    class PAYLOAD,API_ANALYZE,API_PLAN,API_CHAT,API_REHEARSAL,ENGINE server
+    class GEMINI,GROQ provider
+    class FALLBACK,STATUS fallback
+    class SERVER_TITLE,PROVIDERS_TITLE sectionTitle
+
+    style SERVER fill:#fffef0,stroke:#b5a5d5,stroke-width:1px
+    style PROVIDERS fill:#fffef0,stroke:#b5a5d5,stroke-width:1px
 ```
 ---
 
